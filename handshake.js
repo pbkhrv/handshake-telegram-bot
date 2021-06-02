@@ -120,7 +120,7 @@ class HandshakeQuery extends EventEmitter {
    */
   async getNameInfo(name) {
     // Encode and validate the name
-    const encodedName = punycode.toASCII(name);
+    const encodedName = punycode.toASCII(name).toLowerCase();
     console.log(`===> encoded name: ${encodedName}`);
     if (!Rules.verifyString(encodedName)) {
       throw new InvalidNameError();
