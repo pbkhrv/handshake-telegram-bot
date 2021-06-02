@@ -107,7 +107,7 @@ class TelegramBot {
    * @param {Object} cmd - command to be processed
    */
   async processNameCommand(chatId, cmd) {
-    let name = cmd.args;
+    let name = cmd.args?.toLowerCase();
 
     // If command is incomplete, ask for more information
     if (!name) {
@@ -202,9 +202,9 @@ I'll send you a message when the next block has been mined\\.`,
   async sendGreeting(chatId) {
     const params = {parse_mode: 'MarkdownV2', disable_web_page_preview: true};
     const text = `*Hello there\\!*
-I am a Handshake \\(HNS\\) bot\\. [Handshake](https://handshake.org) is an experimental peer\\-to\\-peer root naming system that allows you to register, buy, sell and manage top\\-level domain names on a blockchain\\.
+I am a Handshake \\(HNS\\) bot\\. [Handshake](https://handshake.org) is an experimental peer\\-to\\-peer root naming system that allows you to register and manage top\\-level domain names on a blockchain, and transact in its native cryptocurrency\\.
 
-I can answer queries about names\\. I can also alert you whenever certain events happen related to names or auctions or the Handshake blockchain\\.
+I can answer queries about Handshake names\\. I can also deliver alerts related to names, name auctions or the Handshake blockchain\\.
 
 Commands that I understand:
 /help \\- show this message
@@ -213,7 +213,9 @@ Commands that I understand:
 
 If you don't specify a command, I'll try to interpret your message as a Handshake name and will look it up\\.
 
-Please note: _I handle emojis and unicode automatically\\: you don\\'t have to do [punycode](https://en.wikipedia.org/wiki/Punycode) conversion for names that include characters other than letters and numbers\\._`;
+Please note: _I handle emojis and unicode automatically\\: you don\\'t have to do [punycode](https://en.wikipedia.org/wiki/Punycode) conversion for names that include characters other than letters and numbers\\._
+
+Feedback\\? Feature requests\\? Complaints\\? [Get in touch\\.](https://t.me/allmyhinges)`;
 
     await this.slimbot.sendMessage(chatId, text, params);
   }
