@@ -215,7 +215,7 @@ If you don't specify a command, I'll try to interpret your message as a Handshak
 
 Please note: _I handle emojis and unicode automatically\\: you don\\'t have to do [punycode](https://en.wikipedia.org/wiki/Punycode) conversion for names that include characters other than letters and numbers\\._
 
-_This bot is a work in progress._ Feedback\\? Feature requests\\? Complaints\\? [Would love to hear from you\\!](https://t.me/allmyhinges)`;
+_This bot is a work in progress\\._ Feedback\\? Feature requests\\? Complaints\\? [Would love to hear from you\\!](https://t.me/allmyhinges)`;
 
     await this.slimbot.sendMessage(chatId, text, params);
   }
