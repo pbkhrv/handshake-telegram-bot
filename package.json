@@ -1,0 +1,23 @@
+{
+  "name": "patrol-poc",
+  "version": "1.0.0",
+  "description": "handshake-patrol proof of concept",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bsock": "^0.1.9",
+    "eventemitter3": "^4.0.7",
+    "hs-client": "0.0.9",
+    "hsd": "^2.4.0",
+    "punycode": "^2.1.1",
+    "slimbot": "^5.1.0"
+  },
+  "devDependencies": {
+    "jest": "^27.0.1",
+    "clang-format": "^1.5.0"
+  }
+}
