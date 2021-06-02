@@ -13,7 +13,13 @@ if (!telegramBotApiKey) {
 }
 
 const hsdHost = process.env.HSD_HOST || 'localhost';
-const hsdPort = process.env.HSD_PORT || network.rpcPort;
+let hsdPort = process.env.HSD_PORT;
+if (hsdPort) {
+  hsdPort = parseInt(hsdPort);
+}
+else {
+  hsdPort = network.rpcPort;
+}
 const hsdApiKey = process.env.HSD_API_KEY || '';
 
 const handshakeQuery = new HandshakeQuery(hsdHost, hsdPort, hsdApiKey);
