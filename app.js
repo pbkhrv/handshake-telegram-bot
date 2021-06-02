@@ -20,7 +20,7 @@ if (hsdPort) {
 else {
   hsdPort = network.rpcPort;
 }
-const hsdApiKey = process.env.HSD_API_KEY || '';
+const hsdApiKey = process.env.HSD_API_KEY || null;
 
 const handshakeQuery = new HandshakeQuery(hsdHost, hsdPort, hsdApiKey);
 
