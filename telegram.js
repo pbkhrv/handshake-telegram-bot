@@ -206,7 +206,7 @@ I am a Handshake \\(HNS\\) bot\\. [Handshake](https://handshake.org) is an exper
 
 I can answer queries about Handshake names\\. I can also deliver alerts related to names, name auctions or the Handshake blockchain\\.
 
-Commands that I understand:
+Commands that I currently understand:
 /help \\- show this message
 /name NAME \\- look up NAME on the blockchain and show its status
 /nextblock \\- I will alert you when the next block has been mined
@@ -215,7 +215,7 @@ If you don't specify a command, I'll try to interpret your message as a Handshak
 
 Please note: _I handle emojis and unicode automatically\\: you don\\'t have to do [punycode](https://en.wikipedia.org/wiki/Punycode) conversion for names that include characters other than letters and numbers\\._
 
-Feedback\\? Feature requests\\? Complaints\\? [Get in touch\\.](https://t.me/allmyhinges)`;
+_This bot is a work in progress._ Feedback\\? Feature requests\\? Complaints\\? [Would love to hear from you\\!](https://t.me/allmyhinges)`;
 
     await this.slimbot.sendMessage(chatId, text, params);
   }
