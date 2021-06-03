@@ -1,1 +1,4 @@
 node_modules
+misc
+.vscode
+*.code-workspace
