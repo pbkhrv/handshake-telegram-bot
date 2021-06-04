@@ -78,13 +78,14 @@ class HandshakeQuery extends EventEmitter {
   }
 
   /**
-   * Get full dump of a block by its hash
-   *
-   * @param {string} blockhash
-   * @returns {Object}
+   * Get block by its hash
+   * @param {string} blockHash 
+   * @param {boolean} shouldIncludeTxs whether the block should include TX details
+   * @returns 
    */
-  async getBlockWithTxDetails(blockhash) {
-    return await this.hsdClient.execute('getblock', [blockhash, true, true]);
+  async getBlockByHash(blockHash, shouldIncludeTxs = false) {
+    return await this.hsdClient.execute(
+        'getblock', [blockHash, true, shouldIncludeTxs]);
   }
 }
 
