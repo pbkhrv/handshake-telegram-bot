@@ -14,7 +14,9 @@
     "hs-client": "0.0.9",
     "hsd": "^2.4.0",
     "punycode": "^2.1.1",
-    "slimbot": "^5.1.0"
+    "sequelize": "^6.6.2",
+    "slimbot": "^5.1.0",
+    "sqlite3": "^5.0.2"
   },
   "devDependencies": {
     "jest": "^27.0.1",

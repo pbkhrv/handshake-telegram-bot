@@ -1,6 +1,5 @@
 const {NodeClient} = require('hs-client')
-const {Network, ChainEntry, Covenant, Rules} = require('hsd');
-const network = Network.get('main');
+const {Rules} = require('hsd');
 const punycode = require('punycode/');
 const EventEmitter = require('eventemitter3');
 
