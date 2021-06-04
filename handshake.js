@@ -139,6 +139,11 @@ class HandshakeQuery extends EventEmitter {
   async getBlockchainInfo() {
     return await this.hsdClient.execute('getblockchaininfo');
   }
+
+  async getBlockByHash(blockHash, shouldIncludeTxs = false) {
+    return await this.hsdClient.execute(
+        'getblock', [blockHash, true, shouldIncludeTxs]);
+  }
 }
 
 module.exports = {

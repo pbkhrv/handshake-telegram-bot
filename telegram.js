@@ -1,8 +1,14 @@
 const {states} = require('hsd/lib/covenants/namestate');
+const {util} = require('hsd');
 const Slimbot = require('slimbot');
 const {InvalidNameError, nameStates, calculateNameState} =
     require('./handshake');
 
+
+function units(unit, i) {
+  i = Math.floor(i);
+  return i == 1 ? `1 ${unit}` : `${i} ${unit}s`;
+}
 
 /*
  * Handle all interactions with Telegram
@@ -58,10 +64,6 @@ class TelegramBot {
 
       case '/nextblock':
         await this.createNextBlockAlert(message.chat.id);
-        break;
-
-      case '/test':
-        await this.testInline(message.chat.id);
         break;
 
       // Assuming "/name"
@@ -148,12 +150,21 @@ class TelegramBot {
   async createNextBlockAlert(chatId) {
     const bcInfo = await this.hnsQuery.getBlockchainInfo();
     const blockHeight = bcInfo.blocks;
+
+    const blockHash = bcInfo.bestblockhash;
+    const block = await this.hnsQuery.getBlockByHash(blockHash);
+    const timeDelta = util.now() - block.time;
+
+    const mins = Math.floor(timeDelta/60);
+    let minutes = mins > 0 ? units('minute', mins) : units('second', timeDelta);
+
     this.blockHeightAlerts.push({blockHeight: blockHeight + 1, chatId: chatId});
 
     await this.slimbot.sendMessage(
         chatId,
         `Current block height is *[${
             blockHeight}](https://hnsnetwork.com/blocks/${blockHeight})*\\.
+It was mined approximately ${minutes} ago\\.
 
 I'll send you a message when the next block has been mined\\.`,
         {parse_mode: 'MarkdownV2'});
@@ -306,10 +317,6 @@ function formatNameInfoMarkdown(name, encodedName, nameState, nameInfo) {
  * @returns
  */
 function nameStateDetailsMarkdown(nameState, nameInfo) {
-  function units(unit, i) {
-    i = Math.floor(i);
-    return i == 1 ? `1 ${unit}` : `${i} ${unit}s`;
-  }
 
   switch (nameState) {
     case nameStates.UNAVAIL_RESERVED:
