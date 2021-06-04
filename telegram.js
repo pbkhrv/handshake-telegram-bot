@@ -1,8 +1,7 @@
 const {states} = require('hsd/lib/covenants/namestate');
 const Slimbot = require('slimbot');
-const {InvalidNameError, nameStates, calculateNameState} =
-    require('./handshake');
-
+const {InvalidNameError} = require('./handshake');
+const {nameAvails, calculateNameState} = require('./namestate');
 
 /*
  * Handle all interactions with Telegram
@@ -189,9 +188,10 @@ I'll send you a message when the next block has been mined\\.`,
     const inlineKeyboard = {
       inline_keyboard: [[{text: 'do it again', callback_data: '/test'}]]
     };
-    await this.slimbot.sendMessage(
-        chatId, '*test* inline keyb',
-        {parse_mode: 'MarkdownV2', reply_markup: JSON.stringify(inlineKeyboard)});
+    await this.slimbot.sendMessage(chatId, '*test* inline keyb', {
+      parse_mode: 'MarkdownV2',
+      reply_markup: JSON.stringify(inlineKeyboard)
+    });
   }
 
   /**
@@ -312,40 +312,40 @@ function nameStateDetailsMarkdown(nameState, nameInfo) {
   }
 
   switch (nameState) {
-    case nameStates.UNAVAIL_RESERVED:
+    case nameAvails.UNAVAIL_RESERVED:
       return 'This name is *reserved* but hasn\'t been claimed yet\\.';
 
-    case nameStates.UNAVAIL_CLAIMING:
+    case nameAvails.UNAVAIL_CLAIMING:
       return 'This name is *reserved* and is currently being claimed\\.';
 
-    case nameStates.AVAIL_NEVER_REGISTERED:
+    case nameAvails.AVAIL_NEVER_REGISTERED:
       return 'This name is *available*\\: it hasn\'t been registered yet\\.';
 
-    case nameStates.AVAIL_NOT_RENEWED:
+    case nameAvails.AVAIL_NOT_RENEWED:
       return 'This name is *available*\\: it was previously registered, but the registration wasn\'t renewed\\.';
 
-    case nameStates.AUCTION_OPENING: {
+    case nameAvails.AUCTION_OPENING: {
       let hrs = nameInfo.info.stats?.hoursUntilBidding || 0;
       let when = hrs ? `in about ${units('hour', hrs)}` : 'soon';
       return `Auction *opening*\\: The auction for this name is being opened right now\\.
 Bidding will begin ${when}\\.`;
     }
 
-    case nameStates.AUCTION_BIDDING: {
+    case nameAvails.AUCTION_BIDDING: {
       let hrs = nameInfo.info.stats?.hoursUntilReveal || 0;
       let when = hrs ? `in about ${units('hour', hrs)}` : 'soon';
       return `Auction *bidding*\\: Bids for this name are being placed right now\\.
 Bidding will end ${when}\\.`;
     }
 
-    case nameStates.AUCTION_REVEAL: {
+    case nameAvails.AUCTION_REVEAL: {
       let hrs = nameInfo.info.stats?.hoursUntilClose || 0;
       let when = hrs ? `in about ${units('hour', hrs)}` : 'soon';
       return `Auction *reveal*\\: Bids for this name are being revealed right now\\.
 The auction will close ${when}\\.`;
     }
 
-    case nameStates.UNAVAIL_CLOSED: {
+    case nameAvails.UNAVAIL_CLOSED: {
       let ds = nameInfo.info.stats?.daysUntilExpire || 0;
       let when = ds ? `in about ${units('day', ds)}` : 'soon';
       return `This name is taken\\. It will expire ${

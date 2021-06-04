@@ -4,72 +4,6 @@ const punycode = require('punycode/');
 const EventEmitter = require('eventemitter3');
 
 
-const nameStates = {
-  OTHER: 0,
-  UNAVAIL_RESERVED: 1,
-  UNAVAIL_CLAIMING: 2,
-  UNAVAIL_CLOSED: 3,
-  AVAIL_NEVER_REGISTERED: 4,
-  AVAIL_NOT_RENEWED: 5,
-  AUCTION_OPENING: 6,
-  AUCTION_BIDDING: 7,
-  AUCTION_REVEAL: 8
-};
-
-
-/**
- * Figure out state of the name based on the results of the getNameInfo RPC call
- *
- * @param {Object} nameInfo - result of the getNameInfo RPC call
- * @returns {int}
- */
-function calculateNameState(nameInfo) {
-  // Unavailable: reserved, unregistered
-  if (nameInfo.start.reserved && !nameInfo.info) {
-    return nameStates.UNAVAIL_RESERVED;
-  }
-
-  // Unavailable: reserved, being claimed
-  if (nameInfo.start.reserved && nameInfo.info?.state == 'LOCKED' &&
-      nameInfo.info?.claimed !== 0) {
-    return nameStates.UNAVAIL_CLAIMING;
-  }
-
-  // Unavailable: auction closed or claim completed
-  if (nameInfo.info?.state == 'CLOSED' &&
-      nameInfo.info?.stats?.blocksUntilExpire > 0) {
-    return nameStates.UNAVAIL_CLOSED;
-  }
-
-  // Available: Un-reserved name, un-registered
-  if (!nameInfo.start.reserved && !nameInfo.info) {
-    return nameStates.AVAIL_NEVER_REGISTERED;
-  }
-
-  // Available: registration expired
-  if (nameInfo.info?.state == 'CLOSED' &&
-      nameInfo.info?.stats?.blocksUntilExpire <= 0) {
-    return nameStates.AVAIL_NOT_RENEWED;
-  }
-
-  // In auction: opening
-  if (nameInfo.info?.state == 'OPENING') {
-    return nameStates.AUCTION_OPENING;
-  }
-
-  // In auction: bidding
-  if (nameInfo.info?.state == 'BIDDING') {
-    return nameStates.AUCTION_BIDDING;
-  }
-
-  // In auction: reveal
-  if (nameInfo.info?.state == 'REVEAL') {
-    return nameStates.AUCTION_REVEAL;
-  }
-
-  return nameStates.OTHER;
-}
-
 /**
  * Invalid name error, to be thrown and caught
  */
@@ -143,6 +77,4 @@ class HandshakeQuery extends EventEmitter {
 module.exports = {
   InvalidNameError,
   HandshakeQuery,
-  nameStates,
-  calculateNameState
 };
