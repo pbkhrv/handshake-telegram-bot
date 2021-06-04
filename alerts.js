@@ -5,23 +5,6 @@ const {
   calculateRenewalMilestones
 } = require('./namestate');
 
-/**
- * Find milestones for the given nameInfo that will happen after given block height
- * 
- * @param {number} currentBlockHeight 
- * @param {Object} nameInfo 
- * @returns {Array} list of objects with heightBlock and nsMilestone props
- */
-function calculateFutureNameTriggers(currentBlockHeight, nameInfo) {
-	// Calculate all milestones
-  const milestones = calculateAuctionMilestones(nameInfo);
-	milestones.push(...calculateLockupMilestones(nameInfo));
-	milestones.push(...calculateRenewalMilestones(nameInfo));
-	
-	// Leave only future ones
-	return milestones.filter(el => el.blockHeight >= currentBlockHeight);
-}
-
 
 /*
 async function updateFutureTriggersForAlertsOnName(currentBlockHeight,
@@ -58,4 +41,8 @@ async function createTelegramNameAlert(
     await NameAlertBlockHeightTrigger.create(
         {blockHeight, nsMilestone, didFire: false, alertId: alert.id});
   }
+}
+
+module.exports = {
+	calculateFutureNameTriggers
 }

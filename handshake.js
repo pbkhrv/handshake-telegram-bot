@@ -9,6 +9,10 @@ const EventEmitter = require('eventemitter3');
  */
 class InvalidNameError {}
 
+
+/**
+ * @classdesc Use it to query the Handshake node over RPC and listen for events
+ */
 class HandshakeQuery extends EventEmitter {
   /**
    * Constructor
@@ -72,9 +76,29 @@ class HandshakeQuery extends EventEmitter {
   async getBlockchainInfo() {
     return await this.hsdClient.execute('getblockchaininfo');
   }
+
+  /**
+   * Get full dump of a block by its hash
+   *
+   * @param {string} blockhash
+   * @returns {Object}
+   */
+  async getBlockWithTxDetails(blockhash) {
+    return await this.hsdClient.execute('getblock', [blockhash, true, true]);
+  }
 }
+
+
+/**
+ * Convert tx covenant into a name action object
+ * like 'bid placed' or 'bid redeemed' etc.
+ *
+ * @param {Object} cov tx covenant object received via RPC
+ * @returns {Object}
+ */
+function extractNameActionFromCovenant(cov) {}
 
 module.exports = {
   InvalidNameError,
-  HandshakeQuery,
+  HandshakeQuery
 };
