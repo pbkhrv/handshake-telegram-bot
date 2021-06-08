@@ -37,7 +37,8 @@ class TelegramBot {
     this.slimbot.startPolling();
     this.hnsQuery.on(
         'new_block',
-        async (bcInfo) => this.processBlockHeightAlerts(bcInfo.blocks));
+        async (newBlock) =>
+            this.processBlockHeightAlerts(newBlock.blockHeight));
   }
 
   /**
@@ -154,7 +155,7 @@ class TelegramBot {
     const block = await this.hnsQuery.getBlockByHash(blockHash);
     const timeDelta = util.now() - block.time;
 
-    const mins = Math.floor(timeDelta/60);
+    const mins = Math.floor(timeDelta / 60);
     let minutes = mins > 0 ? units('minute', mins) : units('second', timeDelta);
 
     this.blockHeightAlerts.push({blockHeight: blockHeight + 1, chatId: chatId});
@@ -317,7 +318,6 @@ function formatNameInfoMarkdown(name, encodedName, nameState, nameInfo) {
  * @returns
  */
 function nameStateDetailsMarkdown(nameState, nameInfo) {
-
   switch (nameState) {
     case nameAvails.UNAVAIL_RESERVED:
       return 'This name is *reserved* but hasn\'t been claimed yet\\.';

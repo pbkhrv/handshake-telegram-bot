@@ -9,6 +9,41 @@ const EventEmitter = require('eventemitter3');
  */
 class InvalidNameError {}
 
+/**
+ * Event: new block was mined
+ * @class
+ */
+class NewBlockEvent {
+  /**
+   * @constructor
+   * @param {Object} bcInfo result of getblockchaininfo RPC call
+   * @param {NameAction[]} nameActions list of name actions contained in the
+   *     block
+   */
+  constructor(bcInfo, nameActions) {
+    /**
+     * getblockchaininfo RPC call result object
+     * @type {Object}
+     * @public
+     */
+    this.bcInfo = bcInfo;
+
+    /**
+     * Block height of the new block
+     * @type {number}
+     * @public
+     */
+    this.blockHeight = bcInfo.blocks;
+
+    /**
+     * List of name actions included in the block
+     * @type {NameAction[]}
+     * @public
+     */
+    this.nameActions = nameActions;
+  }
+}
+
 
 /**
  * @classdesc Use it to query the Handshake node over RPC and listen for events
@@ -37,15 +72,29 @@ class HandshakeQuery extends EventEmitter {
     setInterval(() => this.checkForNewBlock(), 10000);
   }
 
-  // Poll
+  /**
+   * Poll Handshake node checking for a new block
+   */
   async checkForNewBlock() {
     console.log('Checking new block');
     const bcInfo = await this.getBlockchainInfo();
     if (bcInfo.blocks != this.lastSeenBlockHeight) {
       console.log('NEW BLOCK!!!!');
-      this.emit('new_block', bcInfo);
       this.lastSeenBlockHeight = bcInfo.blocks;
+      await this.processNewBlock(bcInfo);
     }
+  }
+
+  /**
+   * Process the new block and emit "new block" event
+   * @param {Object} bcInfo getblockchaininfo RPC call result
+   */
+  async processNewBlock(bcInfo) {
+    // Get the new block and extract name actions from it
+    const block = await this.getBlockByHash(
+        bcInfo.bestblockhash, {shouldIncludeTxs: true});
+    const nameActions = getNameActionsFromBlock(block);
+    this.emit('new_block', new NewBlockEvent(bcInfo, nameActions));
   }
 
   /**
@@ -79,9 +128,10 @@ class HandshakeQuery extends EventEmitter {
 
   /**
    * Get block by its hash
-   * @param {string} blockHash 
-   * @param {boolean} shouldIncludeTxs whether the block should include TX details
-   * @returns 
+   * @param {string} blockHash
+   * @param {boolean} shouldIncludeTxs whether the block should include TX
+   *     details
+   * @returns
    */
   async getBlockByHash(blockHash, shouldIncludeTxs = false) {
     return await this.hsdClient.execute(
@@ -89,15 +139,6 @@ class HandshakeQuery extends EventEmitter {
   }
 }
 
-
-/**
- * Convert tx covenant into a name action object
- * like 'bid placed' or 'bid redeemed' etc.
- *
- * @param {Object} cov tx covenant object received via RPC
- * @returns {Object}
- */
-function extractNameActionFromCovenant(cov) {}
 
 module.exports = {
   InvalidNameError,

@@ -21,9 +21,9 @@ function validateExtract(obj) {
     assert(items.length >= 1 && items.length <= 2);
 
     const val = items[0];
-		const opts = items[1] || {};
+    const opts = items[1] || {};
 
-		// The gauntlet of checks
+    // The gauntlet of checks
     if (val == undefined) {
       throw new Error(`Element ${key} is undefined`);
     }
@@ -39,17 +39,15 @@ function validateExtract(obj) {
     // Optional check exact match
     if (opts.match !== undefined) {
       if (val !== opts.match) {
-        throw new Error(
-            `Element ${key} value "${val}" doesnt match expected "${opts.match}"`);
+        throw new Error(`Element ${key} value "${val}" doesnt match expected "${
+            opts.match}"`);
       }
     }
 
     out[key] = val;
   }
 
-	return out;
+  return out;
 }
 
-module.exports = {
-	validateExtract
-};
+module.exports = {validateExtract};
