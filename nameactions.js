@@ -1,11 +1,15 @@
 const {validateExtract} = require('./utils');
-const {util} = require('hsd');
+const {util, Rules} = require('hsd');
 
+/**
+ * @classdesc Base class for name actions/covenants
+ */
 class NameAction {
   constructor(nameHash) {
     this.nameHash = nameHash;
   }
 }
+
 
 /**
  * @classdesc Class representing CLAIM covenant
@@ -22,6 +26,12 @@ class ClaimNameAction extends NameAction {
     this.value = value;
     this.name = name;
   }
+
+  /**
+   * Covenant type matching this name action
+   * @static 
+   */
+  static COVENANT_TYPE = Rules.types.CLAIM;
 
   /**
    * Extract values from an object received from hsd RPC
@@ -82,6 +92,12 @@ class OpenAuctionNameAction extends NameAction {
   }
 
   /**
+   * Covenant type matching this name action
+   * @static 
+   */
+  static COVENANT_TYPE = Rules.types.OPEN;
+
+  /**
    * Extract values from an object received from the hsd RPC
    * @param {Object} vout tx output to extract action from
    * @returns {OpenAuctionNameAction}
@@ -129,13 +145,19 @@ class AuctionBidNameAction extends NameAction {
    *
    * @param {string} nameHash
    * @param {string} name
-   * @param {number} value
+   * @param {number} lockupAmount
    */
-  constructor(nameHash, name, value, height) {
+  constructor(nameHash, name, lockupAmount, height) {
     super(nameHash);
     this.name = name;
-    this.value = value;
+    this.lockupAmount = lockupAmount;
   }
+
+  /**
+   * Covenant type matching this name action
+   * @static 
+   */
+  static COVENANT_TYPE = Rules.types.BID;
 
   /**
    * Extract values from an object received from the hsd RPC
@@ -169,13 +191,13 @@ class AuctionBidNameAction extends NameAction {
       action: [vout.covenant?.action, {type: 'string', match: 'BID'}],
       nameHash: [vout.covenant?.items?.[0]],
       name: [vout.covenant?.items?.[2]],
-      value: [vout.value, {type: 'number'}]
+      lockupAmount: [vout.value, {type: 'number'}]
     };
 
-    const {nameHash, name, value} = validateExtract(vals);
+    const {nameHash, name, lockupAmount} = validateExtract(vals);
 
     return new AuctionBidNameAction(
-        nameHash, util.parseHex(name).toString(), value);
+        nameHash, util.parseHex(name).toString(), lockupAmount);
   }
 }
 
@@ -186,12 +208,18 @@ class AuctionRevealNameAction extends NameAction {
   /**
    *
    * @param {string} nameHash
-   * @param {number} value
+   * @param {number} bidAmount
    */
-  constructor(nameHash, value, height) {
+  constructor(nameHash, bidAmount, height) {
     super(nameHash);
-    this.value = value;
+    this.bidAmount = bidAmount;
   }
+
+    /**
+   * Covenant type matching this name action
+   * @static 
+   */
+  static COVENANT_TYPE = Rules.types.REVEAL;
 
   /**
    * Extract values from an object received from the hsd RPC
@@ -223,14 +251,16 @@ class AuctionRevealNameAction extends NameAction {
     const vals = {
       action: [vout.covenant?.action, {type: 'string', match: 'REVEAL'}],
       nameHash: [vout.covenant?.items?.[0]],
-      value: [vout.value, {type: 'number'}]
+      bidAmount: [vout.value, {type: 'number'}]
     };
 
-    const {nameHash, value} = validateExtract(vals);
+    const {nameHash, bidAmount} = validateExtract(vals);
 
-    return new AuctionRevealNameAction(nameHash, value);
+    return new AuctionRevealNameAction(nameHash, bidAmount);
   }
 }
+
+// TODO: implement REDEEM
 
 /**
  * @classdesc Class representing a REGISTER covenant
@@ -240,9 +270,16 @@ class RegisterNameAction extends NameAction {
    * 
    * @param {string} nameHash 
    */
-  constructor(nameHash) {
+  constructor(nameHash, burnedValue) {
     super(nameHash);
+    this.burnedValue = burnedValue;
   }
+
+    /**
+   * Covenant type matching this name action
+   * @static 
+   */
+  static COVENANT_TYPE = Rules.types.REGISTER;
 
   /**
    * Extract values from an object received from the hsd RPC
@@ -251,58 +288,116 @@ class RegisterNameAction extends NameAction {
    */
   static fromJSON(vout) {
     /* example json
-
+      {
+        "value": 58,
+        "n": 4,
+        "address": {
+          "version": 0,
+          "hash": "d8ba94386f1b5cc6484f96a818d764ceb8ae9201",
+          "string": "hs1qmzafgwr0rdwvvjz0j65p34mye6u2ayspd2wwec"
+        },
+        "covenant": {
+          "type": 6,
+          "action": "REGISTER",
+          "items": [
+            "fdb4c543ea60246a8a647c82ab2c29f67c5d85293462f578b14138005e92983a",
+            "edfe0000",
+            "0002036e73310b786e2d2d6c793562383070002ce706b701c002",
+            "0000000000000000742c8042723937f768ffec86f719e61e7033607e241f56fa"
+          ]
+        }
+      },
      */
 
     const vals = {
-      action: [vout.covenant?.action, {type: 'string', match: 'REVEAL'}],
+      action: [vout.covenant?.action, {type: 'string', match: 'REGISTER'}],
+      nameHash: [vout.covenant?.items?.[0]],
+      burnedValue: [vout.value, {type: 'number'}]
+    };
+
+    const {nameHash, burnedValue} = validateExtract(vals);
+
+    return new RegisterNameAction(nameHash, burnedValue);
+  }
+}
+
+// TODO: implement UPDATE
+// TODO: implement TRANSFER
+// TODO: implement FINALIZE
+// TODO: implement REVOKE
+
+/**
+ * @classdesc Class representing a name auction BBB covenant
+ */
+class RenewNameAction extends NameAction {
+  constructor(nameHash) {
+    super(nameHash);
+  }
+
+    /**
+   * Covenant type matching this name action
+   * @static 
+   */
+  static COVENANT_TYPE = Rules.types.RENEW;
+
+  /**
+   * Extract values from an object received from the hsd RPC
+   * @param {Object} vout tx output to extract action from
+   * @returns {RenewNameAction}
+   */
+  static fromJSON(vout) {
+    const vals = {
+      action: [vout.covenant?.action, {type: 'string', match: 'RENEW'}],
       nameHash: [vout.covenant?.items?.[0]],
     };
 
     const {nameHash} = validateExtract(vals);
 
-    return new RegisterNameAction(nameHash);
+    return new RenewNameAction(nameHash);
   }
 }
-/////////////////////////////
+
 
 /**
- * @classdesc Class representing a name auction BBB covenant
+ * Map covenant types to name action classes
  */
-class BBBNameAction extends NameAction {
-  constructor(nameHash, value, height) {
-    super(nameHash);
-    this.value = value;
-    this.height = height;
+const nameActionsByCovenant = {
+  [ClaimNameAction.COVENANT_TYPE]: ClaimNameAction,
+  [OpenAuctionNameAction.COVENANT_TYPE]: OpenAuctionNameAction,
+  [AuctionBidNameAction.COVENANT_TYPE]: AuctionBidNameAction,
+  [AuctionRevealNameAction.COVENANT_TYPE]: AuctionRevealNameAction,
+  [RegisterNameAction.COVENANT_TYPE]: RegisterNameAction,
+  [RenewNameAction.COVENANT_TYPE]: RenewNameAction
+};
+
+
+/**
+ * Parse tx output into a name action class if covenant is mapped
+ * @param {Object} vout tx output received from hsd RPC
+ * @returns {Object|null}
+ */
+function nameActionFromTxout(vout) {
+  const vals = {
+    covType: [vout.covenant?.type, {type: 'number'}]
   }
 
-  /**
-   * Extract values from an object received from the hsd RPC
-   * @param {Object} vout tx output to extract action from
-   * @returns {BBBNameAction}
-   */
-  static fromJSON(vout) {
-    /* example json
+  const {covType} = validateExtract(vals);
 
-     */
-
-    const vals = {
-      action: [vout.covenant?.action, {type: 'string', match: 'REVEAL'}],
-      nameHash: [vout.covenant?.items?.[0]],
-      value: [vout.value, {type: 'number'}]
-    };
-
-    const {nameHash, value} = validateExtract(vals);
-
-    return new BBBNameAction(nameHash, value);
+  const nameActionCls = nameActionsByCovenant[covType];
+  if (nameActionCls) {
+    return nameActionCls.fromJSON(vout);
+  }
+  else {
+    return null;
   }
 }
-
-///////////////////////
 
 module.exports = {
   ClaimNameAction,
   OpenAuctionNameAction,
   AuctionBidNameAction,
-  AuctionRevealNameAction
+  AuctionRevealNameAction,
+  RegisterNameAction,
+  RenewNameAction,
+  nameActionFromTxout
 };
