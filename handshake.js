@@ -94,6 +94,14 @@ class HandshakeQuery extends EventEmitter {
     const block = await this.getBlockByHash(
         bcInfo.bestblockhash, {shouldIncludeTxs: true});
     const nameActions = getNameActionsFromBlock(block);
+
+    // Fill in missing names based on their namehash values
+    for (let nameAction of nameActions) {
+      if (!nameAction.name) {
+        nameAction.name = await this.getNameByHash(nameAction.nameHash);
+      }
+    }
+
     this.emit('new_block', new NewBlockEvent(bcInfo, nameActions));
   }
 
@@ -128,19 +136,32 @@ class HandshakeQuery extends EventEmitter {
 
   /**
    * Get block by its hash
+   *
    * @param {string} blockHash
    * @param {boolean} shouldIncludeTxs whether the block should include TX
    *     details
-   * @returns
+   * @returns {Object}
    */
   async getBlockByHash(blockHash, shouldIncludeTxs = false) {
     return await this.hsdClient.execute(
         'getblock', [blockHash, true, shouldIncludeTxs]);
+  }
+
+  /**
+   * Lookup name by its hash
+   * // TODO: cache results in an LRU
+   *
+   * @param {string} nameHash
+   * @returns {string}
+   */
+  async getNameByHash(nameHash) {
+    return await this.hsdClient.execute('getnamebyhash', [nameHash]);
   }
 }
 
 
 module.exports = {
   InvalidNameError,
+  NewBlockEvent,
   HandshakeQuery
 };

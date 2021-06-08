@@ -2,7 +2,7 @@ const {Sequelize, DataTypes, Model} = require('sequelize');
 
 /**
  * @file Database layer using the sequelize ORM
- * 
+ *
  * WARNING: this is one giant singleton hack.
  * Each model is database-connection dependent.
  * You can only use this with one database connection.
@@ -12,17 +12,17 @@ const {Sequelize, DataTypes, Model} = require('sequelize');
  */
 
 /**
- * @classdesc Alert created by a Telegram user for a specific Handshake name
- * 
+ * Alert created by a Telegram user for a specific Handshake name
+ *
  * This alert is triggered by two things:
  * - blockchain transaction with a covenant that matches the name
  * - block of a certain height was mined (see the trigger class below)
- * 
- * @typedef {Object} NameTelegramAlert
+ *
+ * @typedef {Object} TelegramNameAlert
  * @property {string} chatId
  * @property {string} targetName
  */
-class NameTelegramAlert extends Model {}
+class TelegramNameAlert extends Model {}
 
 const schemaNameTelegramAlert = {
   // Telegram chat id that this alert was created for
@@ -35,11 +35,11 @@ const schemaNameTelegramAlert = {
 
 /**
  * @classdesc Trigger for a name alert when some block height has been reached.
- * 
+ *
  * This block height is tied to a specific milestone in the context of the name,
  * like "name auction closed" or "registration is expired".
  * One name alert can have many block height triggers.
- * 
+ *
  * @typedef NameAlertBlockHeightTrigger
  * @property {number} blockHeight
  * @property {string} nsMilestone
@@ -65,12 +65,16 @@ let sequelize = null;
 
 /**
  * Initialize database connection and create tables
- * 
- * @param {string} connectionString 
+ *
+ * @param {string} connectionString
  */
-async function init(connectionString) {
+async function init(connectionString, isQueitReinit = false) {
   if (sequelize) {
-    throw new Error('Cannot re-initialize database connection');
+    if (!isQueitReinit) {
+      throw new Error('Cannot re-initialize database connection');
+    } else {
+      return;
+    }
   }
 
   // Connect to db
@@ -78,18 +82,18 @@ async function init(connectionString) {
   await sequelize.authenticate();
 
   // Init name alert models
-  NameTelegramAlert.init(
+  TelegramNameAlert.init(
       schemaNameTelegramAlert,
-      {sequelize: this.sequelize, modelName: 'NameTelegramAlert'});
+      {sequelize: sequelize, modelName: 'TelegramNameAlert'});
 
   NameAlertBlockHeightTrigger.init(
       schemaNameAlertBlockHeightTrigger,
-      {sequelize: this.sequelize, modelName: 'NameAlertBlockHeightTrigger'});
+      {sequelize: sequelize, modelName: 'NameAlertBlockHeightTrigger'});
 
-  NameTelegramAlert.hasMany(
+  TelegramNameAlert.hasMany(
       NameAlertBlockHeightTrigger,
-      {onDelete: 'CASCADE', foreignKey: 'alertId'});
-  NameAlertBlockHeightTrigger.belongsTo(NameTelegramAlert);
+      {as: 'blockHeightTriggers', onDelete: 'CASCADE', foreignKey: 'alertId'});
+  NameAlertBlockHeightTrigger.belongsTo(TelegramNameAlert);
 
   // Create schema
   await sequelize.sync();
@@ -107,7 +111,8 @@ async function recreateAllTables() {
 }
 
 module.exports = {
-  NameTelegramAlert,
+  TelegramNameAlert,
   NameAlertBlockHeightTrigger,
+  init,
   recreateAllTables
 };

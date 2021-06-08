@@ -2,28 +2,45 @@ const {validateExtract} = require('./utils');
 const {util, Rules} = require('hsd');
 
 /**
- * @classdesc Base class for name actions/covenants
+ * Base class for name actions/covenants
  */
 class NameAction {
   constructor(nameHash) {
+    /**
+     * Hash of the name
+     * @type {string}
+     * @public
+     */
     this.nameHash = nameHash;
   }
 }
 
 
 /**
- * @classdesc Class representing CLAIM covenant
+ * Class representing CLAIM covenant
  */
 class ClaimNameAction extends NameAction {
   /**
    * Create a name action
    * @param {string} nameHash
-   * @param {number} value value of the output
+   * @param {number} value
    * @param {string} name
    */
   constructor(nameHash, value, name) {
     super(nameHash);
+    /**
+     * Amount of HNS reserved for the owner of the name
+     * @type {number}
+     * @public
+     */
     this.value = value;
+
+    /**
+     * Name being claimed
+     * @type {string}
+     * @public
+     */
+
     this.name = name;
   }
 
@@ -77,7 +94,7 @@ class ClaimNameAction extends NameAction {
 }
 
 /**
- * @classdesc Class representing a name auction OPEN covenant
+ * Class representing a name auction OPEN covenant
  *
  * TODO: add "height" that should come from the block, not the tx itself
  */
@@ -90,6 +107,12 @@ class OpenAuctionNameAction extends NameAction {
    */
   constructor(nameHash, name) {
     super(nameHash);
+
+    /**
+     * Name being opened for auction
+     * @type {string}
+     * @public
+     */
     this.name = name;
   }
 
@@ -139,7 +162,7 @@ class OpenAuctionNameAction extends NameAction {
 }
 
 /**
- * @classdesc Class representing a name auction BID covenant
+ * Class representing a name auction BID covenant
  */
 class AuctionBidNameAction extends NameAction {
   /**
@@ -151,7 +174,19 @@ class AuctionBidNameAction extends NameAction {
    */
   constructor(nameHash, name, lockupAmount, height) {
     super(nameHash);
+
+    /**
+     * Name being bid on
+     * @type {string}
+     * @public
+     */
     this.name = name;
+
+    /**
+     * Amount of HNS locked up in the bid
+     * @type {number}
+     * @public
+     */
     this.lockupAmount = lockupAmount;
   }
 
@@ -204,17 +239,32 @@ class AuctionBidNameAction extends NameAction {
 }
 
 /**
- * @classdesc Class representing a name auction REVEAL covenant
+ * Class representing a name auction REVEAL covenant
  */
 class AuctionRevealNameAction extends NameAction {
   /**
+   * Create a reveal name action
    *
    * @param {string} nameHash
    * @param {number} bidAmount
    */
-  constructor(nameHash, bidAmount, height) {
+  constructor(nameHash, bidAmount) {
     super(nameHash);
+
+    /**
+     * Amount of HNS that was actually bid
+     * @type {number}
+     * @public
+     */
     this.bidAmount = bidAmount;
+
+    /**
+     * Name being bid on
+     * (must be set externally)
+     * @type {string|null}
+     * @public
+     */
+    this.name = null;
   }
 
   /**
@@ -265,16 +315,30 @@ class AuctionRevealNameAction extends NameAction {
 // TODO: implement REDEEM
 
 /**
- * @classdesc Class representing a REGISTER covenant
+ * Class representing a REGISTER covenant
  */
 class RegisterNameAction extends NameAction {
   /**
-   *
+   * Create a register name action
    * @param {string} nameHash
    */
   constructor(nameHash, burnedValue) {
     super(nameHash);
+
+    /**
+     * Amount of HNS burned by the winner of the auction
+     * @type {number}
+     * @public
+     */
     this.burnedValue = burnedValue;
+
+    /**
+     * Name being registered
+     * (must be set externally)
+     * @type {string|null}
+     * @public
+     */
+    this.name = null;
   }
 
   /**
@@ -329,11 +393,22 @@ class RegisterNameAction extends NameAction {
 // TODO: implement REVOKE
 
 /**
- * @classdesc Class representing a name auction BBB covenant
+ * Class representing a RENEW covenant
  */
 class RenewNameAction extends NameAction {
+  /**
+   * Create a renew name action
+   *
+   * @param {string} nameHash
+   */
   constructor(nameHash) {
     super(nameHash);
+
+    /**
+     * Name being renewed
+     * (must be set externally)
+     */
+    this.name = null;
   }
 
   /**
