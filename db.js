@@ -19,7 +19,7 @@ const {Sequelize, DataTypes, Model} = require('sequelize');
  * - block of a certain height was mined (see the trigger class below)
  *
  * @typedef {Object} TelegramNameAlert
- * @property {string} chatId
+ * @property {number} chatId
  * @property {string} targetName
  */
 class TelegramNameAlert extends Model {}
@@ -27,7 +27,7 @@ class TelegramNameAlert extends Model {}
 const schemaNameTelegramAlert = {
   // Telegram chat id that this alert was created for
   // and that will receive messages whenever this alert it's triggered
-  chatId: {type: DataTypes.STRING, allowNull: false},
+  chatId: {type: DataTypes.BIGINT, allowNull: false},
 
   // Handshake name that this alert was created for
   targetName: {type: DataTypes.STRING, allowNull: false}
@@ -93,7 +93,7 @@ async function init(connectionString, isQueitReinit = false) {
   TelegramNameAlert.hasMany(
       NameAlertBlockHeightTrigger,
       {as: 'blockHeightTriggers', onDelete: 'CASCADE', foreignKey: 'alertId'});
-  NameAlertBlockHeightTrigger.belongsTo(TelegramNameAlert);
+  NameAlertBlockHeightTrigger.belongsTo(TelegramNameAlert, {as: 'alert'});
 
   // Create schema
   await sequelize.sync();

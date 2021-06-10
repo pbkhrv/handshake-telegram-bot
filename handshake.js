@@ -2,6 +2,7 @@ const {NodeClient} = require('hs-client')
 const {Rules} = require('hsd');
 const punycode = require('punycode/');
 const EventEmitter = require('eventemitter3');
+const {getNameActionsFromBlock} = require('./nameactions');
 
 
 /**
@@ -91,8 +92,7 @@ class HandshakeQuery extends EventEmitter {
    */
   async processNewBlock(bcInfo) {
     // Get the new block and extract name actions from it
-    const block = await this.getBlockByHash(
-        bcInfo.bestblockhash, {shouldIncludeTxs: true});
+    const block = await this.getBlockByHash(bcInfo.bestblockhash, true);
     const nameActions = getNameActionsFromBlock(block);
 
     // Fill in missing names based on their namehash values
@@ -107,22 +107,16 @@ class HandshakeQuery extends EventEmitter {
 
   /**
    * Lookup information about a name.
-   * Automatically converts unicode characters to punycode.
    *
-   * @param {string} name
+   * @param {string} encodedName punycode-encoded name
    * @returns {Object}
    */
-  async getNameInfo(name) {
-    // Encode and validate the name
-    const encodedName = punycode.toASCII(name).toLowerCase();
-    console.log(`===> encoded name: ${encodedName}`);
+  async getNameInfo(encodedName) {
     if (!Rules.verifyString(encodedName)) {
       throw new InvalidNameError();
     }
 
-    const info = await this.hsdClient.execute('getnameinfo', [encodedName]);
-
-    return {encodedName: encodedName, info: info};
+    return await this.hsdClient.execute('getnameinfo', [encodedName]);
   }
 
   /**
@@ -157,11 +151,37 @@ class HandshakeQuery extends EventEmitter {
   async getNameByHash(nameHash) {
     return await this.hsdClient.execute('getnamebyhash', [nameHash]);
   }
+
+  getCurrentBlockHeight() {
+    return this.lastSeenBlockHeight;
+  }
+}
+
+/**
+ * Encode name using punycode
+ *
+ * @param {string} name
+ * @returns {string} punycode-encoded name
+ */
+function encodeName(name) {
+  return punycode.toASCII(name).toLowerCase();
+}
+
+/**
+ * Decode encoded name using punycode
+ *
+ * @param {string} encodedName
+ * @returns {string} unicode name
+ */
+function decodeName(encodedName) {
+  return punycode.toUnicode(encodedName);
 }
 
 
 module.exports = {
   InvalidNameError,
   NewBlockEvent,
-  HandshakeQuery
+  HandshakeQuery,
+  encodeName,
+  decodeName
 };

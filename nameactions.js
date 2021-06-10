@@ -172,7 +172,7 @@ class AuctionBidNameAction extends NameAction {
    * @param {string} name
    * @param {number} lockupAmount
    */
-  constructor(nameHash, name, lockupAmount, height) {
+  constructor(nameHash, name, lockupAmount) {
     super(nameHash);
 
     /**

@@ -50,4 +50,19 @@ function validateExtract(obj) {
   return out;
 }
 
-module.exports = {validateExtract};
+function groupArrayBy(arr, keyFunc) {
+  const out = {};
+  for (let i of arr) {
+    const key = keyFunc(i);
+    if (!out[key]) {
+      out[key] = [i];
+    }
+    else {
+      out[key].push(i);
+    }
+  }
+
+  return out;
+}
+
+module.exports = {validateExtract, groupArrayBy};

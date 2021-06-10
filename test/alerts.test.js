@@ -1,9 +1,15 @@
 const db = require('../db');
-const {createTelegramNameAlert, updateNameAlertTriggersOnNewBlock} =
-    require('../alerts');
-const {calculateAllFutureMilestones} = require('../namestate');
+const {
+  createTelegramNameAlert,
+  updateNameAlertTriggersOnNewBlock,
+  findMatchingNameActionTriggers,
+  findMatchingBlockHeightTriggers,
+  fireMatchingTelegramNameAlerts,
+  events
+} = require('../alerts');
+const {calculateAllFutureMilestones, nsMilestones} = require('../namestate');
 const {NewBlockEvent} = require('../handshake');
-const {OpenAuctionNameAction} = require('../nameactions');
+const {OpenAuctionNameAction, AuctionBidNameAction} = require('../nameactions');
 
 const blockHeightAuctionOpen = 62517;
 
@@ -36,9 +42,9 @@ const nameInfoOpening =
         'weak': false,
         'stats': {
           'openPeriodStart': blockHeightAuctionOpen,
-          'openPeriodEnd': blockHeightAuctionOpen + 720,
-          'blocksUntilBidding': 720,
-          'hoursUntilBidding': 120
+          'openPeriodEnd': blockHeightAuctionOpen + 37,
+          'blocksUntilBidding': 37,
+          'hoursUntilBidding': 37 / 6
         }
       }
     }
@@ -56,7 +62,7 @@ reinitDb() {
 
 test('create telegram name alert', async () => {
   await reinitDb();
-  const chatId = 'chat123';
+  const chatId = 123;
   const targetName = 'ocer';
   const currentBlockHeight = blockHeightAuctionOpen;
 
@@ -130,7 +136,7 @@ test('update name alert triggers on new block', async () => {
   const milestones =
       calculateAllFutureMilestones(nameInfoOpening, blockHeightAuctionOpen);
   expect(triggers1.length).toBe(milestones.length);
-      calculateAllFutureMilestones(nameInfoOpening, blockHeightAuctionOpen);
+  calculateAllFutureMilestones(nameInfoOpening, blockHeightAuctionOpen);
   expect(triggers2.length).toBe(milestones.length);
 
   // last alert should stay unchanged
@@ -140,4 +146,111 @@ test('update name alert triggers on new block', async () => {
   });
 
   expect(alert3.blockHeightTriggers.length).toBe(0);
+});
+
+test('finds all firing name alerts based on name actions', async () => {
+  await reinitDb();
+  const chatId1 = 123;
+  const chatId2 = 45;
+  const name1 = 'name1';
+  const name2 = 'name2';
+  const name3 = 'name3';
+  const currentBlockHeight = 1000;
+
+  // Create initial alerts with no triggers
+  await createTelegramNameAlert(
+      chatId1, name1, currentBlockHeight, nameInfoEmpty);
+
+  await createTelegramNameAlert(
+      chatId1, name3, currentBlockHeight, nameInfoEmpty);
+
+  await createTelegramNameAlert(
+      chatId2, name2, currentBlockHeight, nameInfoEmpty);
+
+  const nameActions = [
+    new OpenAuctionNameAction('hash1', name1),
+    new OpenAuctionNameAction('hash2', name2),
+    new OpenAuctionNameAction('hash3', name3),
+  ];
+
+  const triggs = await findMatchingNameActionTriggers(nameActions);
+
+  expect(Object.keys(triggs).length).toBe(2);
+  expect(triggs[chatId1]).toBeTruthy();
+  expect(triggs[chatId1][name1].length).toBe(1);
+  expect(triggs[chatId1][name1][0].name).toBe(name1);
+  expect(triggs[chatId1][name3].length).toBe(1);
+  expect(triggs[chatId1][name3][0].name).toBe(name3);
+  expect(triggs[chatId2]).toBeTruthy();
+  expect(triggs[chatId2][name2].length).toBe(1);
+  expect(triggs[chatId2][name2][0].name).toBe(name2);
+});
+
+test('finds all firing name alerts based on block height', async () => {
+  await reinitDb();
+  const chatId = 'asdf123';
+  const targetName = 'ocer';
+  const prevBlockHeight = nameInfoOpening.info.stats.openPeriodStart;
+
+  await createTelegramNameAlert(
+      chatId, targetName, prevBlockHeight, nameInfoOpening);
+
+  await createTelegramNameAlert(
+      chatId, 'othername', prevBlockHeight, nameInfoEmpty);
+
+  const milestones =
+      calculateAllFutureMilestones(nameInfoOpening, prevBlockHeight);
+  const biddingPeriodStart =
+      milestones.find(m => m.nsMilestone == nsMilestones.AUCTION_BIDDING)
+          .blockHeight;
+
+  const triggs = await findMatchingBlockHeightTriggers(biddingPeriodStart);
+
+  expect(Object.keys(triggs).length).toBe(1);
+  expect(triggs[chatId]).toBeTruthy();
+  expect(triggs[chatId][targetName]).toBeTruthy();
+  expect(triggs[chatId][targetName].length).toBe(1);
+  expect(triggs[chatId][targetName][0].nsMilestone)
+      .toBe(nsMilestones.AUCTION_BIDDING);
+  expect(triggs[chatId][targetName][0].blockHeight).toBe(biddingPeriodStart);
+});
+
+test('fires all matching telegram name alerts', async () => {
+  await reinitDb();
+  const chatId = 123;
+  const targetName = 'ocer';
+  const prevBlockHeight = nameInfoOpening.info.stats.openPeriodStart;
+
+  // Create 2 alerts, one of which we'll trigger later
+  await createTelegramNameAlert(
+      chatId, targetName, prevBlockHeight, nameInfoOpening);
+
+  await createTelegramNameAlert(
+      chatId, 'othername', prevBlockHeight, nameInfoEmpty);
+
+  const milestones =
+      calculateAllFutureMilestones(nameInfoOpening, prevBlockHeight);
+
+  // We'll simulate getting to the bidding period
+  const biddingPeriodStart =
+      milestones.find(m => m.nsMilestone == nsMilestones.AUCTION_BIDDING)
+          .blockHeight;
+
+  // Simulate getting a name action that matches our target name
+  const nameActions = [
+    new AuctionBidNameAction('hash1', targetName, 10),
+    new OpenAuctionNameAction('hash1', 'blahblah', 10)
+  ];
+
+  const emit = jest.fn((evt, arg) => true);
+
+  await fireMatchingTelegramNameAlerts(nameActions, biddingPeriodStart, {emit});
+
+  expect(emit.mock.calls.length).toBe(1);
+  expect(emit.mock.calls[0][0]).toBe(events.TELEGRAM_NAME_ALERT_TRIGGER);
+  const evt = emit.mock.calls[0][1];
+  expect(evt.chatId).toBe(chatId);
+  expect(evt.encodedName).toBe(targetName);
+  expect(evt.nameActions.length).toBe(1);
+  expect(evt.nameActions[0]).toBe(nameActions[0]);
 });

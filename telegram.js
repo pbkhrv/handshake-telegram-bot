@@ -1,13 +1,11 @@
 const {states} = require('hsd/lib/covenants/namestate');
 const {util} = require('hsd');
 const Slimbot = require('slimbot');
-const {InvalidNameError} = require('./handshake');
-const {nameAvails, calculateNameAvail} = require('./namestate');
+const {InvalidNameError, encodeName, decodeName} = require('./handshake');
+const {nameAvails, calculateNameAvail, nsMilestones} = require('./namestate');
+const {TelegramAlertManager, events: alertEvents} = require('./alerts');
+const nacs = require('./nameactions');
 
-function units(unit, i) {
-  i = Math.floor(i);
-  return i == 1 ? `1 ${unit}` : `${i} ${unit}s`;
-}
 
 /*
  * Handle all interactions with Telegram
@@ -17,11 +15,25 @@ class TelegramBot {
    * Constructor.
    *
    * @param {string} botToken - telegram bot token
-   * @param {Object} hnsQuery - Handshake query accessor
+   * @param {HandshakeQuery} hnsQuery
+   * @param {TelegramAlertManager} alertManager
    */
-  constructor(botToken, hnsQuery) {
+  constructor(botToken, hnsQuery, alertManager) {
+    /**
+     * @type {Slimbot}
+     */
     this.slimbot = new Slimbot(botToken);
+
+    /**
+     * @type {HandshakeQuery}
+     */
     this.hnsQuery = hnsQuery;
+
+    /**
+     * @type {TelegramAlertManager}
+     */
+    this.alertManager = alertManager;
+
     this.incompleteCommands = {};
     this.blockHeightAlerts = [];
   }
@@ -34,11 +46,16 @@ class TelegramBot {
     this.slimbot.on('message', async (message) => this.onMessage(message));
     this.slimbot.on(
         'edited_message', async (message) => this.onMessage(message));
+    this.slimbot.on(
+        'callback_query', async (query) => this.onCallbackQuery(query));
     this.slimbot.startPolling();
     this.hnsQuery.on(
         'new_block',
         async (newBlock) =>
             this.processBlockHeightAlerts(newBlock.blockHeight));
+    this.alertManager.on(
+        alertEvents.TELEGRAM_NAME_ALERT_TRIGGER,
+        async (evt) => this.deliverNameAlert(evt));
   }
 
   /**
@@ -74,6 +91,92 @@ class TelegramBot {
 
       default:
         await this.sendUnknownCommandNotice(message.chat.id);
+    }
+  }
+
+  async onCallbackQuery(query) {
+    if (!query) {
+      console.log('Got empty callback_query, exiting');
+      return;
+    }
+
+    console.log('RECEIVED CALLBACK QUERY', query);
+
+    const queryId = query.id;
+    if (!queryId) {
+      console.log('Got empty query id in callback_query, exiting');
+      return;
+    }
+
+    // TODO: refactor, this is badwrong
+    const data = query.data;
+    if (!data) {
+      console.log('cbQuery: data is empty');
+      await this.slimbot.answerCallbackQuery(
+          queryId, {text: 'Something went wrong...'});
+      return;
+    }
+
+    const message = query.message;
+    const chatId = message?.chat?.id || query.chat_instance;
+    if (!chatId) {
+      console.log('cbQuery: chatId is empty');
+      await this.slimbot.answerCallbackQuery(
+          queryId, {text: 'Something went wrong...'});
+      return;
+    }
+
+    const queryArgs = data.split('|');
+
+    switch (queryArgs[0]) {
+      // TODO: refactor this into a "toggle name alert" command instead of
+      // create/delete Create name alert
+      case 'cna': {
+        const encodedName = queryArgs[1];
+        if (!encodedName) {
+          console.log('cbQuery: cna command without param');
+          await this.slimbot.answerCallbackQuery(
+              queryId, {text: 'Something went wrong...'});
+          return;
+        }
+
+        await this.alertManager.createNameAlert(chatId, encodedName);
+        await this.slimbot.answerCallbackQuery(
+            queryId, {text: `Created alert for the name '${encodedName}'`});
+        if (message?.message_id) {
+          await this.slimbot.editMessageReplyMarkup(
+              chatId, message.message_id,
+              JSON.stringify(nameAlertInlineKeyboard(encodedName, true)));
+        }
+        break;
+      }
+
+      // Delete name alert
+      case 'dna': {
+        const encodedName = queryArgs[1];
+        if (!encodedName) {
+          console.log('cbQuery: dna command without param');
+          await this.slimbot.answerCallbackQuery(
+              queryId, {text: 'Something went wrong...'});
+          return;
+        }
+        await this.alertManager.deleteNameAlert(chatId, encodedName);
+        await this.slimbot.answerCallbackQuery(
+            queryId, {text: `Deleted alert for the name '${encodedName}'`});
+        if (message?.message_id) {
+          await this.slimbot.editMessageReplyMarkup(
+              chatId, message.message_id,
+              JSON.stringify(nameAlertInlineKeyboard(encodedName, false)));
+        }
+        break;
+      }
+
+      // Unknown command
+      default:
+        console.log(`cbQuery: unknown command '${data}'`);
+        await this.slimbot.answerCallbackQuery(
+            queryId, {text: 'Something went wrong...'});
+        return;
     }
   }
 
@@ -121,13 +224,20 @@ class TelegramBot {
     }
 
     try {
-      const {encodedName, info} = await this.hnsQuery.getNameInfo(name);
-      const nameState = calculateNameAvail(info);
-      const text = formatNameInfoMarkdown(name, encodedName, nameState, info);
+      const encodedName = encodeName(name);
+      const nameInfo = await this.hnsQuery.getNameInfo(encodedName);
+      const nameState = calculateNameAvail(nameInfo);
+      const existsAlert =
+          await this.alertManager.checkExistsNameAlert(chatId, encodedName);
+
+      const text = formatNameInfoMarkdown(
+          name, encodedName, nameState, nameInfo, existsAlert);
 
       const tgParams = {
         parse_mode: 'MarkdownV2',
-        disable_web_page_preview: true
+        disable_web_page_preview: true,
+        reply_markup:
+            JSON.stringify(nameAlertInlineKeyboard(encodedName, existsAlert))
       };
 
       await this.slimbot.sendMessage(chatId, text, tgParams);
@@ -147,6 +257,28 @@ class TelegramBot {
     }
   }
 
+  /**
+   * Format and deliver the name alert
+   * @param {TelegramNameAlertTriggerEvent} evt
+   */
+  async deliverNameAlert(evt) {
+    const text = formatNameAlertMarkdown(
+        evt.encodedName, evt.blockHeightTriggers, evt.nameActions);
+
+    const tgParams = {
+      parse_mode: 'MarkdownV2',
+      disable_web_page_preview: true,
+      reply_markup: JSON.stringify(nameAlertInlineKeyboard(encodedName, true))
+    };
+
+    await this.slimbot.sendMessage(evt.chatId, text, tgParams);
+  }
+
+
+  /**
+   *
+   * @param {number} chatId
+   */
   async createNextBlockAlert(chatId) {
     const bcInfo = await this.hnsQuery.getBlockchainInfo();
     const blockHeight = bcInfo.blocks;
@@ -245,6 +377,24 @@ Please use /help to see the list of commands that I recognize.`);
   }
 }
 
+
+function units(unit, i) {
+  i = Math.floor(i);
+  return i == 1 ? `1 ${unit}` : `${i} ${unit}s`;
+}
+
+
+function nameAlertInlineKeyboard(encodedName, existsAlert) {
+  let button = null;
+  if (existsAlert) {
+    button = {text: 'Cancel alert', callback_data: `dna|${encodedName}`};
+  } else {
+    button = {text: 'Create alert', callback_data: `cna|${encodedName}`};
+  }
+  return {inline_keyboard: [[button]]};
+}
+
+
 /**
  * Parse "bot command" from the incoming message
  *
@@ -288,36 +438,93 @@ function tgsafe(text) {
   return text.replace(specialCharsRegex, '\\$&');
 }
 
-function formatNameInfoMarkdown(name, encodedName, nameState, nameInfo) {
-  let out = `Name: ${tgsafe(name)}\n`;
+function formatNameInfoMarkdown(
+    name, encodedName, nameState, nameInfo, existsAlert) {
+  // Header
+  let text = `Name: *${tgsafe(name)}*\n`;
 
   // Include punycode name if its different
   if (name != encodedName) {
-    out += `Punycode\\-encoded name:\n\`${tgsafe(encodedName)}\`\n`;
+    text += `punycode: \`${tgsafe(encodedName)}\`\n`;
   }
 
+  text += '\n';
+
   // Details
-  out += '\n' + nameStateDetailsMarkdown(nameState, nameInfo) + '\n';
+  text += formatNameStateDetailsMarkdown(nameState, nameInfo) + '\n';
 
   // External links
-  out +=
-      `\nSee details of this name on [Namebase](https://www.namebase.io/domains/${
-          encodedName}) or [block explorer](https://hnsnetwork.com/names/${
-          encodedName})\n`;
+  text += '\n';
+  text += `See details of this name on`;
+  text += ` [Namebase](https://www.namebase.io/domains/${encodedName})`;
+  text += ` or [block explorer](https://hnsnetwork.com/names/${encodedName})\n`;
 
-  console.log(out);
-  return out;
+  if (existsAlert) {
+    text += '\n_You have an alert set for this name\\._';
+  }
+
+  return text;
+}
+
+
+/**
+ * Describe the name alert using Telegram-safe markdown
+ *
+ * TODO: look into using a templating library
+ *
+ * @param {string} encodedName
+ * @param {NameAlertBlockHeightTrigger[]} blockHeightTriggers
+ * @param {NameAction[]} nameActions
+ * @returns {string}
+ */
+function formatNameAlertMarkdown(
+    encodedName, blockHeightTriggers, nameActions) {
+  // Header
+  const name = decodeName(encodedName);
+  let text = `Name alert: *${tgsafe(name)}*`;
+  if (name != encodedName) {
+    text += ` \\(\`${tgsafe(encodedName)}\`\\)`;
+  }
+  text += '\n\n';
+
+  // All the happenings
+  if (blockHeightTriggers) {
+    for (let {nsMilestone} of blockHeightTriggers) {
+      text += describeMilestone(nsMilestone);
+      text += '\n\n';
+    }
+  }
+
+  // Name actions
+  if (nameActions) {
+    text += 'New actions related to this name\\:\n\n';
+    for (let nameAction of nameActions) {
+      text += '\\- ';
+      text += describeNameAction(nameAction);
+      text += '\n';
+    }
+  }
+
+  // Footer
+  text += '_Note: the name\\-related information above';
+  text += ' is not guaranteed to be completely accurate\\._\n';
+  text += `_Please check [block explorer](https://hnsnetwork.com/names/${
+      encodedName}) for details\\._\n`;
+
+  return text;
 }
 
 
 /**
  * Make a human-readable summary of the state of this name
  *
+ * TODO: look into using a templating library
+ *
  * @param {int} nameState - state of the name
  * @param {Object} nameInfo - results of the getNameInfo RPC call
  * @returns
  */
-function nameStateDetailsMarkdown(nameState, nameInfo) {
+function formatNameStateDetailsMarkdown(nameState, nameInfo) {
   switch (nameState) {
     case nameAvails.UNAVAIL_RESERVED:
       return 'This name is *reserved* but hasn\'t been claimed yet\\.';
@@ -333,28 +540,32 @@ function nameStateDetailsMarkdown(nameState, nameInfo) {
 
     case nameAvails.AUCTION_OPENING: {
       let hrs = nameInfo.info.stats?.hoursUntilBidding || 0;
-      let when = hrs ? `in about ${units('hour', hrs)}` : 'soon';
-      return `Auction *opening*\\: The auction for this name is being opened right now\\.
+      let when =
+          Math.floor(hrs) > 0 ? `in about ${units('hour', hrs)}` : 'soon';
+      return `This name is *in auction*\\: The auction for this name is *being opened* right now\\.
 Bidding will begin ${when}\\.`;
     }
 
     case nameAvails.AUCTION_BIDDING: {
       let hrs = nameInfo.info.stats?.hoursUntilReveal || 0;
-      let when = hrs ? `in about ${units('hour', hrs)}` : 'soon';
-      return `Auction *bidding*\\: Bids for this name are being placed right now\\.
+      let when =
+          Math.floor(hrs) > 0 ? `in about ${units('hour', hrs)}` : 'soon';
+      return `This name is *in auction*\\: Bids for this name are being accepted right now\\.
 Bidding will end ${when}\\.`;
     }
 
     case nameAvails.AUCTION_REVEAL: {
       let hrs = nameInfo.info.stats?.hoursUntilClose || 0;
-      let when = hrs ? `in about ${units('hour', hrs)}` : 'soon';
-      return `Auction *reveal*\\: Bids for this name are being revealed right now\\.
+      let when =
+          Math.floor(hrs) > 0 ? `in about ${units('hour', hrs)}` : 'soon';
+      return `This name is *in auction*\\: Bids for this name are being revealed right now\\.
 The auction will close ${when}\\.`;
     }
 
     case nameAvails.UNAVAIL_CLOSED: {
       let ds = nameInfo.info.stats?.daysUntilExpire || 0;
-      let when = ds ? `in about ${units('day', ds)}` : 'soon';
+      let when = Math.floor(ds) > 0 ? `in about ${units('day', ds)}` :
+                                      'in less than a day';
       return `This name is taken\\. It will expire ${
           when} unless renewed by the owner before then\\.`;
     }
@@ -362,6 +573,91 @@ The auction will close ${when}\\.`;
     default:
       return `I'm not sure how to summarize the state of this name\\.\\.\\.
 Please click one of the links below to see the details\\.`;
+  }
+}
+
+
+/**
+ * Return a human-readable description of the name state milestone
+ *
+ * @param {string} milestone
+ * @returns {string}
+ */
+function describeMilestone(milestone) {
+  let text = '';
+
+  switch (milestone) {
+    case nsMilestones.AUCTION_OPENING:
+      text += '*Auction opening*\\: Bidding will begin in a few hours\\.';
+      break;
+
+    case nsMilestones.AUCTION_BIDDING:
+      text += '*Auction bidding*\\: The bidding for this name has begun\\.';
+      text += ' Bids will be accepted for a few days\\.';
+      break;
+
+    case nsMilestones.AUCTION_REVEAL:
+      text += '*Auction reveal*\\: Bids are being revealed\\.';
+      text += ' The auction will close in a few days\\.';
+      break;
+
+    case nsMilestones.AUCTION_CLOSED:
+      text += '*Auction closed*\\: The auction for this name is over\\.';
+      break;
+
+    case nsMilestones.NAME_LOCKED:
+      text += '*Name locked*\\: The name has been locked\\.';
+      break;
+
+    case nsMilestones.NAME_UNLOCKED:
+      text += '*Name unlocked*\\: The name has been unlocked';
+      text += ' and changes can now be made to it\\.';
+      break;
+
+    case nsMilestones.REGISTRATION_EXPIRED:
+      text += '*Registration expired*\\: The name registration';
+      text += ' has not been renewed in time';
+      text += ' and it is available for a new auction\\.';
+      break;
+
+    default:
+      console.log(`Unknown name state milestone received: '${milestone}`);
+      text += '_The state of this name has changed';
+      text += ' but I\'m not sure how to summarize it\\.';
+      text += ' Please check the block explorer link below for details\\._';
+      break;
+  }
+
+  return text;
+}
+
+
+/**
+ *
+ * @param {NameAction} nameAction
+ */
+function describeNameAction(nameAction) {
+  switch (nameAction.constructor) {
+    case nacs.ClaimNameAction:
+      return '*Claim*\\: This name has been claimed\\!';
+
+    case nacs.OpenAuctionNameAction:
+      return '*Auction open*\\: The name auction has been opened\\.';
+
+    case nacs.AuctionBidNameAction:
+      return `*Bid placed*\\: ${tgsafe('' + nameAction.lockupAmount)} HNS\\.`;
+
+    case nacs.AuctionRevealNameAction:
+      return `*Bid revealed*\\: ${tgsafe('' + nameAction.bidAmount)} HNS\\.`;
+
+    case nacs.RegisterNameAction:
+      return '*Name registered*\\: The name has been registered\\.';
+
+    case nacs.RenewNameAction:
+      return '*Name renewed*\\: The name has been renewed\\.';
+
+    default:
+      return '_Not sure how to describe this action\\. Please check the block explorer link below_\\.';
   }
 }
 
