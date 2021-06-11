@@ -61,6 +61,31 @@ const schemaNameAlertBlockHeightTrigger = {
 };
 
 
+/**
+ *
+ */
+class TelegramBlockHeightAlert extends Model {}
+
+const schemaTelegramBlockHeightAlert = {
+  // Telegram chat id that this alert was created for
+  // and that will receive messages whenever this alert it's triggered
+  chatId: {type: DataTypes.BIGINT, allowNull: false},
+
+  // Block height that should trigger the alert
+  blockHeight: {type: DataTypes.INTEGER, allowNull: false},
+
+  // Alert type key that can be mapped to a class or function
+  alertType: {type: DataTypes.STRING, allowNull: false},
+
+  // Whether this alert has fired already
+  // This is to prevent multiple messages being sent for the same trigger
+  didFire: {type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false},
+
+  // Optional extra information about the alert
+  contextJson: {type: DataTypes.STRING, allowNull: true}
+};
+
+
 let sequelize = null;
 
 /**
@@ -83,17 +108,20 @@ async function init(connectionString, isQueitReinit = false) {
 
   // Init name alert models
   TelegramNameAlert.init(
-      schemaNameTelegramAlert,
-      {sequelize: sequelize, modelName: 'TelegramNameAlert'});
+      schemaNameTelegramAlert, {sequelize, modelName: TelegramNameAlert.name});
 
   NameAlertBlockHeightTrigger.init(
       schemaNameAlertBlockHeightTrigger,
-      {sequelize: sequelize, modelName: 'NameAlertBlockHeightTrigger'});
+      {sequelize, modelName: NameAlertBlockHeightTrigger.name});
 
   TelegramNameAlert.hasMany(
       NameAlertBlockHeightTrigger,
       {as: 'blockHeightTriggers', onDelete: 'CASCADE', foreignKey: 'alertId'});
   NameAlertBlockHeightTrigger.belongsTo(TelegramNameAlert, {as: 'alert'});
+
+  TelegramBlockHeightAlert.init(
+      schemaTelegramBlockHeightAlert,
+      {sequelize, modelName: TelegramBlockHeightAlert.name});
 
   // Create schema
   await sequelize.sync();
@@ -113,6 +141,7 @@ async function recreateAllTables() {
 module.exports = {
   TelegramNameAlert,
   NameAlertBlockHeightTrigger,
+  TelegramBlockHeightAlert,
   init,
   recreateAllTables
 };

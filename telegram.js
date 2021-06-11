@@ -4,8 +4,19 @@ const Slimbot = require('slimbot');
 const {InvalidNameError, encodeName, decodeName} = require('./handshake');
 const {nameAvails, calculateNameAvail, nsMilestones} = require('./namestate');
 const {TelegramAlertManager, events: alertEvents} = require('./alerts');
+const {parsePositiveInt} = require('./utils');
 const nacs = require('./nameactions');
 
+const emojis = {
+  deleted: '🗑',
+  alert: '🚨',
+  checkmark: '✅'
+};
+
+
+const blockHeightAlerts = {
+  BLOCK_MINED: 'BLOCK_MINED'
+};
 
 /*
  * Handle all interactions with Telegram
@@ -35,7 +46,6 @@ class TelegramBot {
     this.alertManager = alertManager;
 
     this.incompleteCommands = {};
-    this.blockHeightAlerts = [];
   }
 
   /**
@@ -43,19 +53,21 @@ class TelegramBot {
    */
   start() {
     console.log('Starting bot');
+
+    this.alertManager.on(
+        alertEvents.TELEGRAM_NAME_ALERT,
+        async (evt) => this.deliverNameAlert(evt));
+
+    this.alertManager.on(
+        alertEvents.TELEGRAM_BLOCK_HEIGHT_ALERT,
+        async (evt) => this.deliverBlockHeightAlert(evt));
+
     this.slimbot.on('message', async (message) => this.onMessage(message));
     this.slimbot.on(
         'edited_message', async (message) => this.onMessage(message));
     this.slimbot.on(
         'callback_query', async (query) => this.onCallbackQuery(query));
     this.slimbot.startPolling();
-    this.hnsQuery.on(
-        'new_block',
-        async (newBlock) =>
-            this.processBlockHeightAlerts(newBlock.blockHeight));
-    this.alertManager.on(
-        alertEvents.TELEGRAM_NAME_ALERT_TRIGGER,
-        async (evt) => this.deliverNameAlert(evt));
   }
 
   /**
@@ -80,7 +92,7 @@ class TelegramBot {
         break;
 
       case '/nextblock':
-        await this.createNextBlockAlert(message.chat.id);
+        await this.processNextBlockCommand(message.chat.id, cmd.args);
         break;
 
       // Assuming "/name"
@@ -167,6 +179,28 @@ class TelegramBot {
           await this.slimbot.editMessageReplyMarkup(
               chatId, message.message_id,
               JSON.stringify(nameAlertInlineKeyboard(encodedName, false)));
+        }
+        break;
+      }
+
+      case 'dbha': {
+        const [, alertType, blockHeight] = queryArgs;
+        if (alertType && blockHeight) {
+          await this.alertManager.deleteTelegramBlockHeightAlert(
+              chatId, alertType, blockHeight);
+        }
+        await this.slimbot.answerCallbackQuery(
+            queryId, {text: 'Alert deleted'});
+        if (message?.message_id) {
+          await this.slimbot.editMessageReplyMarkup(
+              chatId, message.message_id, JSON.stringify(emptyInlineKeyboard));
+        }
+
+        // If this alert is current, acknowledge its deletion
+        if (this.hnsQuery.getCurrentBlockHeight() < blockHeight) {
+          await this.slimbot.sendMessage(
+              chatId,
+              `${emojis.deleted} Deleted block height ${blockHeight} alert.`);
         }
         break;
       }
@@ -261,9 +295,10 @@ class TelegramBot {
    * Format and deliver the name alert
    * @param {TelegramNameAlertTriggerEvent} evt
    */
-  async deliverNameAlert(evt) {
-    const text = formatNameAlertMarkdown(
-        evt.encodedName, evt.blockHeightTriggers, evt.nameActions);
+  async deliverNameAlert(
+      {chatId, encodedName, blockHeightTriggers, nameActions}) {
+    const text =
+        formatNameAlertMarkdown(encodedName, blockHeightTriggers, nameActions);
 
     const tgParams = {
       parse_mode: 'MarkdownV2',
@@ -271,61 +306,73 @@ class TelegramBot {
       reply_markup: JSON.stringify(nameAlertInlineKeyboard(encodedName, true))
     };
 
-    await this.slimbot.sendMessage(evt.chatId, text, tgParams);
+    await this.slimbot.sendMessage(chatId, text, tgParams);
   }
 
 
   /**
    *
    * @param {number} chatId
+   * @param {string} inputTargetBlockHeight user input target block height
    */
-  async createNextBlockAlert(chatId) {
+  async processNextBlockCommand(chatId, inputTargetBlockHeight) {
+    const blockHeight = await this.hnsQuery.getCurrentBlockHeight();
+
+    // Figure out which block height we should be alerting on:
+    // - by default, next block
+    // - if user used "+X" notation, we'll alert on current + X
+    // - if user sent number > current block height, alert on that
+    let targetBlockHeight = blockHeight + 1;  // default
+    const relativeNumber = parsePositiveInt(inputTargetBlockHeight);
+    if (relativeNumber) {
+      targetBlockHeight = blockHeight + relativeNumber;
+    } else {
+      const number = parseInt(inputTargetBlockHeight);
+      if (number && number > blockHeight) {
+        targetBlockHeight = number;
+      }
+    }
+
+    const dontCreateDuplicates = true;
+
+    await this.alertManager.createTelegramBlockHeightAlert(
+        chatId, targetBlockHeight, blockHeightAlerts.BLOCK_MINED,
+        inputTargetBlockHeight, dontCreateDuplicates);
+
+    const secondsSinceMined = await this.getCurrentBlockTiming();
+    const text = formatBlockMinedAlertMarkdown(
+        blockHeight, secondsSinceMined, targetBlockHeight);
+
+    await this.slimbot.sendMessage(chatId, text, {
+      parse_mode: 'MarkdownV2',
+      reply_markup: JSON.stringify(cancelBlockHeightAlertInlineKeyboard(
+          targetBlockHeight, blockHeightAlerts.BLOCK_MINED))
+    });
+  }
+
+
+  async getCurrentBlockTiming() {
     const bcInfo = await this.hnsQuery.getBlockchainInfo();
     const blockHeight = bcInfo.blocks;
 
     const blockHash = bcInfo.bestblockhash;
     const block = await this.hnsQuery.getBlockByHash(blockHash);
-    const timeDelta = util.now() - block.time;
-
-    const mins = Math.floor(timeDelta / 60);
-    let minutes = mins > 0 ? units('minute', mins) : units('second', timeDelta);
-
-    this.blockHeightAlerts.push({blockHeight: blockHeight + 1, chatId: chatId});
-
-    await this.slimbot.sendMessage(
-        chatId,
-        `Current block height is *[${
-            blockHeight}](https://hnsnetwork.com/blocks/${blockHeight})*\\.
-It was mined approximately ${minutes} ago\\.
-
-I'll send you a message when the next block has been mined\\.`,
-        {parse_mode: 'MarkdownV2'});
+    const secondsSinceMined = util.now() - block.time;
+    return secondsSinceMined;
   }
 
-  async processBlockHeightAlerts(blockHeight) {
-    // Find all matching alerts
-    const dueAlerts =
-        this.blockHeightAlerts.filter((a) => (a.blockHeight <= blockHeight));
-    // Filter them out from our list
-    this.blockHeightAlerts =
-        this.blockHeightAlerts.filter((a) => (a.blockHeight > blockHeight));
 
-    const inlineKeyboard = {
-      inline_keyboard: [
-        [{text: 'Alert me on next block again', callback_data: '/nextblock'}]
-      ]
-    };
+  async deliverBlockHeightAlert({chatId, blockHeight, alertType, context}) {
+    if (alertType == blockHeightAlerts.BLOCK_MINED) {
+      let text = `${emojis.alert} Alert\\: block `;
+      text +=
+          `*[${blockHeight}](https://hnsnetwork.com/blocks/${blockHeight})*`;
+      text += ' has been mined\\.';
 
-    const sends = [];
-    for (let alrt of dueAlerts) {
-      sends.push(this.slimbot.sendMessage(
-          alrt.chatId,
-          `Alert\\: block *[${blockHeight}](https://hnsnetwork.com/blocks/${
-              blockHeight})* has been mined\\.`,
-          {parse_mode: 'MarkdownV2', reply_markup: inlineKeyboard}));
+      await this.slimbot.sendMessage(chatId, text, {parse_mode: 'MarkdownV2'});
+    } else {
+      console.log(`Unknown alertType received: ${alertType}`);
     }
-
-    await Promise.all(sends);
   }
 
   async testInline(chatId) {
@@ -392,6 +439,20 @@ function nameAlertInlineKeyboard(encodedName, existsAlert) {
     button = {text: 'Create alert', callback_data: `cna|${encodedName}`};
   }
   return {inline_keyboard: [[button]]};
+}
+
+
+function cancelBlockHeightAlertInlineKeyboard(blockHeight, alertType) {
+  const button = {
+    text: 'Cancel alert',
+    callback_data: `dbha|${alertType}|${blockHeight}`
+  };
+  return {inline_keyboard: [[button]]};
+}
+
+
+function emptyInlineKeyboard() {
+  return {inline_keyboard: []};
 }
 
 
@@ -481,7 +542,7 @@ function formatNameAlertMarkdown(
     encodedName, blockHeightTriggers, nameActions) {
   // Header
   const name = decodeName(encodedName);
-  let text = `Name alert: *${tgsafe(name)}*`;
+  let text = `${emojis.alert} Name alert: *${tgsafe(name)}*`;
   if (name != encodedName) {
     text += ` \\(\`${tgsafe(encodedName)}\`\\)`;
   }
@@ -497,7 +558,7 @@ function formatNameAlertMarkdown(
 
   // Name actions
   if (nameActions) {
-    text += 'New actions related to this name\\:\n\n';
+    text += 'New actions related to this name\\:\n';
     for (let nameAction of nameActions) {
       text += '\\- ';
       text += describeNameAction(nameAction);
@@ -506,10 +567,11 @@ function formatNameAlertMarkdown(
   }
 
   // Footer
-  text += '_Note: the name\\-related information above';
+  text += '\n';
+  text += '_Note: the information above';
   text += ' is not guaranteed to be completely accurate\\._\n';
-  text += `_Please check [block explorer](https://hnsnetwork.com/names/${
-      encodedName}) for details\\._\n`;
+  text += `_Please confirm with [block explorer](https://hnsnetwork.com/names/${
+      encodedName})\\._\n`;
 
   return text;
 }
@@ -659,6 +721,22 @@ function describeNameAction(nameAction) {
     default:
       return '_Not sure how to describe this action\\. Please check the block explorer link below_\\.';
   }
+}
+
+
+function formatBlockMinedAlertMarkdown(
+    blockHeight, secondsSinceMined, targetBlockHeight) {
+  const mins = Math.floor(secondsSinceMined / 60);
+  const time =
+      mins > 0 ? units('minute', mins) : units('second', secondsSinceMined);
+
+  let text = 'Current block height is ';
+  text +=
+      `*[${blockHeight}](https://hnsnetwork.com/blocks/${blockHeight})*\\.\n`;
+  text += `It was mined approximately ${time} ago\\.\n\n`;
+  text += `I'll send you a message when block number `;
+  text += `${targetBlockHeight} has been mined\\.`;
+  return text;
 }
 
 

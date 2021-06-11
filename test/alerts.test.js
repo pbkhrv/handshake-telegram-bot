@@ -5,7 +5,9 @@ const {
   findMatchingNameActionTriggers,
   findMatchingBlockHeightTriggers,
   fireMatchingTelegramNameAlerts,
-  events
+  events,
+  createTelegramBlockHeightAlert,
+  fireMatchingTelegramBlockHeightAlerts
 } = require('../alerts');
 const {calculateAllFutureMilestones, nsMilestones} = require('../namestate');
 const {NewBlockEvent} = require('../handshake');
@@ -247,10 +249,47 @@ test('fires all matching telegram name alerts', async () => {
   await fireMatchingTelegramNameAlerts(nameActions, biddingPeriodStart, {emit});
 
   expect(emit.mock.calls.length).toBe(1);
-  expect(emit.mock.calls[0][0]).toBe(events.TELEGRAM_NAME_ALERT_TRIGGER);
+  expect(emit.mock.calls[0][0]).toBe(events.TELEGRAM_NAME_ALERT);
   const evt = emit.mock.calls[0][1];
   expect(evt.chatId).toBe(chatId);
   expect(evt.encodedName).toBe(targetName);
   expect(evt.nameActions.length).toBe(1);
   expect(evt.nameActions[0]).toBe(nameActions[0]);
+});
+
+test('fires all matching telegram block height alerts', async () => {
+  const chatId1 = 123;
+  const chatId2 = 56;
+
+  await createTelegramBlockHeightAlert(chatId1, 1000, "blockmined1000");
+  await createTelegramBlockHeightAlert(chatId1, 1001, "blockmined1001");
+  await createTelegramBlockHeightAlert(chatId2, 2000, "blockmined2000");
+
+  let emit = jest.fn((evt, arg) => true);
+  await fireMatchingTelegramBlockHeightAlerts(999, {emit});
+  expect(emit.mock.calls.length).toBe(0);
+
+  // Should pick up alert set for current block height
+  emit = jest.fn((evt, arg) => true);
+  await fireMatchingTelegramBlockHeightAlerts(1000, {emit});
+  expect(emit.mock.calls.length).toBe(1);
+  expect(emit.mock.calls[0][0]).toBe(events.TELEGRAM_BLOCK_HEIGHT_ALERT);
+  expect(emit.mock.calls[0][1].chatId).toBe(chatId1);
+  expect(emit.mock.calls[0][1].blockHeight).toBe(1000);
+  expect(emit.mock.calls[0][1].alertType).toBe("blockmined1000");
+
+  // Should pick up unfired alerts set for block height less than current
+  emit = jest.fn((evt, arg) => true);
+  await fireMatchingTelegramBlockHeightAlerts(5000, {emit});
+  expect(emit.mock.calls.length).toBe(2);
+  // first call
+  expect(emit.mock.calls[0][0]).toBe(events.TELEGRAM_BLOCK_HEIGHT_ALERT);
+  expect(emit.mock.calls[0][1].chatId).toBe(chatId1);
+  expect(emit.mock.calls[0][1].blockHeight).toBe(1001);
+  expect(emit.mock.calls[0][1].alertType).toBe("blockmined1001");
+  // second call
+  expect(emit.mock.calls[1][0]).toBe(events.TELEGRAM_BLOCK_HEIGHT_ALERT);
+  expect(emit.mock.calls[1][1].chatId).toBe(chatId2);
+  expect(emit.mock.calls[1][1].blockHeight).toBe(2000);
+  expect(emit.mock.calls[1][1].alertType).toBe("blockmined2000");
 });

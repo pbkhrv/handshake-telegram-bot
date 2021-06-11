@@ -56,8 +56,7 @@ function groupArrayBy(arr, keyFunc) {
     const key = keyFunc(i);
     if (!out[key]) {
       out[key] = [i];
-    }
-    else {
+    } else {
       out[key].push(i);
     }
   }
@@ -65,4 +64,24 @@ function groupArrayBy(arr, keyFunc) {
   return out;
 }
 
-module.exports = {validateExtract, groupArrayBy};
+function quietJsonParse(str) {
+  try {
+    return JSON.parse(str);
+  } catch (error) {
+    return null;
+  }
+}
+
+function parsePositiveInt(input) {
+  const regexp = /^ *\+ *([0-9]+) *$/;
+  const match = input.match(regexp);
+  return match ? parseInt(match[1]) : null;
+}
+
+
+module.exports = {
+  validateExtract,
+  groupArrayBy,
+  quietJsonParse,
+  parsePositiveInt
+};
