@@ -8,31 +8,41 @@ const {HandshakeQuery} = require('./handshake');
 const {TelegramAlertManager} = require('./alerts');
 const db = require('./db');
 
-const telegramBotApiKey = process.env.TELEGRAM_BOT_API_KEY;
-if (!telegramBotApiKey) {
-  console.error('TELEGRAM_BOT_API_KEY environment variable is empty.');
-  process.exit(1);
+async function start() {
+  const telegramBotApiKey = process.env.TELEGRAM_BOT_API_KEY;
+  if (!telegramBotApiKey) {
+    console.error('TELEGRAM_BOT_API_KEY environment variable is empty.');
+    process.exit(1);
+  }
+
+  const hsdHost = process.env.HSD_HOST || 'localhost';
+  let hsdPort = process.env.HSD_PORT;
+  if (hsdPort) {
+    hsdPort = parseInt(hsdPort);
+  } else {
+    hsdPort = network.rpcPort;
+  }
+  const hsdApiKey = process.env.HSD_API_KEY || null;
+
+  const sqliteFilePath = process.env.SQLITE_FILE_PATH;
+  if (!sqliteFilePath) {
+    console.error('SQLITE_FILE_PATH environment variable is empty.')
+    process.exit(1);
+  }
+
+  // Init db
+  await db.init(`sqlite:${sqliteFilePath}`);
+
+  const handshakeQuery = new HandshakeQuery(hsdHost, hsdPort, hsdApiKey);
+
+  const alertManager = new TelegramAlertManager(handshakeQuery);
+
+  const telegramBot =
+      new TelegramBot(telegramBotApiKey, handshakeQuery, alertManager);
+
+  await alertManager.start();
+  await telegramBot.start();
+  await handshakeQuery.start();
 }
 
-const hsdHost = process.env.HSD_HOST || 'localhost';
-let hsdPort = process.env.HSD_PORT;
-if (hsdPort) {
-  hsdPort = parseInt(hsdPort);
-} else {
-  hsdPort = network.rpcPort;
-}
-const hsdApiKey = process.env.HSD_API_KEY || null;
-
-// Init db
-db.init('sqlite:/tmp/hnsbot.db');
-
-const handshakeQuery = new HandshakeQuery(hsdHost, hsdPort, hsdApiKey);
-
-const alertManager = new TelegramAlertManager(handshakeQuery);
-
-const telegramBot =
-    new TelegramBot(telegramBotApiKey, handshakeQuery, alertManager);
-
-alertManager.start();
-telegramBot.start();
-handshakeQuery.start();
+start();

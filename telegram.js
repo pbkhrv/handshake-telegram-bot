@@ -95,10 +95,9 @@ class TelegramBot {
         await this.processNextBlockCommand(message.chat.id, cmd.args);
         break;
 
-      // Assuming "/name"
+      // Assuming "/name" or "+COUNT"
       case 'no_command':
-        cmd.args = cmd.text;
-        await this.processNameCommand(message.chat.id, cmd);
+        await this.processDefaultCommand(message.chat.id, cmd.text);
         break;
 
       default:
@@ -154,7 +153,7 @@ class TelegramBot {
 
         await this.alertManager.createNameAlert(chatId, encodedName);
         await this.slimbot.answerCallbackQuery(
-            queryId, {text: `Created alert for the name '${encodedName}'`});
+            queryId, {text: `Created alert for name '${encodedName}'`});
         if (message?.message_id) {
           await this.slimbot.editMessageReplyMarkup(
               chatId, message.message_id,
@@ -174,12 +173,17 @@ class TelegramBot {
         }
         await this.alertManager.deleteNameAlert(chatId, encodedName);
         await this.slimbot.answerCallbackQuery(
-            queryId, {text: `Deleted alert for the name '${encodedName}'`});
+            queryId, {text: 'Alert deleted'});
+
+        // Remove inline keyboard, because we'll start a new interaction
         if (message?.message_id) {
           await this.slimbot.editMessageReplyMarkup(
               chatId, message.message_id,
-              JSON.stringify(nameAlertInlineKeyboard(encodedName, false)));
+              JSON.stringify(emptyInlineKeyboard()));
         }
+
+        await this.slimbot.sendMessage(
+            chatId, `${emojis.deleted} Deleted alert for \`${encodedName}\``);
         break;
       }
 
@@ -187,7 +191,7 @@ class TelegramBot {
         const [, alertType, blockHeight] = queryArgs;
         if (alertType && blockHeight) {
           await this.alertManager.deleteTelegramBlockHeightAlert(
-              chatId, alertType, blockHeight);
+              chatId, blockHeight, alertType);
         }
         await this.slimbot.answerCallbackQuery(
             queryId, {text: 'Alert deleted'});
@@ -200,7 +204,7 @@ class TelegramBot {
         if (this.hnsQuery.getCurrentBlockHeight() < blockHeight) {
           await this.slimbot.sendMessage(
               chatId,
-              `${emojis.deleted} Deleted block height ${blockHeight} alert.`);
+              `${emojis.deleted} Deleted alert for block height ${blockHeight}.`);
         }
         break;
       }
@@ -351,6 +355,18 @@ class TelegramBot {
   }
 
 
+  async processDefaultCommand(chatId, input) {
+    // Is this a "+COUNT" nextblock shortcut?
+    const count = parsePositiveInt(input);
+    if (count) {
+      await this.processNextBlockCommand(chatId, input);
+    }
+    else {
+      await this.processNameCommand(chatId, {args: input});
+    }
+  }
+
+
   async getCurrentBlockTiming() {
     const bcInfo = await this.hnsQuery.getBlockchainInfo();
     const blockHeight = bcInfo.blocks;
@@ -395,14 +411,18 @@ class TelegramBot {
     const text = `*Hello there\\!*
 I am a Handshake \\(HNS\\) bot\\. [Handshake](https://handshake.org) is an experimental peer\\-to\\-peer root naming system that allows you to register and manage top\\-level domain names on a blockchain, and transact in its native cryptocurrency\\.
 
-I can answer queries about Handshake names\\. I can also deliver alerts related to names, name auctions or the Handshake blockchain\\.
+I can answer queries about Handshake names and deliver alerts related to names, name auctions or the Handshake blockchain\\.
 
-Commands that I currently understand:
+*Commands\\:* I currently understand the following\\:
 /help \\- show this message
-/name NAME \\- look up NAME on the blockchain and show its status
+/name \`NAME\` \\- look up \`NAME\` on the blockchain and show its status
 /nextblock \\- I will alert you when the next block has been mined
+/nextblock \`\\+COUNT\` \\- I will alert you when \`COUNT\` blocks from now have been mined
+/nextblock \`HEIGHT\` \\- I will alert you when block height \`HEIGHT\` has been mined
 
-If you don't specify a command, I'll try to interpret your message as a Handshake name and will look it up\\.
+*Shortcuts\\:* If you don't specify a command, I'll try to guess\\:
+• \`\\+COUNT\` \\(like \`\\+1\`, \`\\+5\` etc\\) is treated like the /nextblock command
+• Try to look up anything that looks like a name
 
 Please note: _I handle emojis and unicode automatically\\: you don\\'t have to do [punycode](https://en.wikipedia.org/wiki/Punycode) conversion for names that include characters other than letters and numbers\\._
 
@@ -516,7 +536,7 @@ function formatNameInfoMarkdown(
 
   // External links
   text += '\n';
-  text += `See details of this name on`;
+  text += `See details on`;
   text += ` [Namebase](https://www.namebase.io/domains/${encodedName})`;
   text += ` or [block explorer](https://hnsnetwork.com/names/${encodedName})\n`;
 
@@ -601,27 +621,39 @@ function formatNameStateDetailsMarkdown(nameState, nameInfo) {
       return 'This name is *available*\\: it was previously registered, but the registration wasn\'t renewed\\.';
 
     case nameAvails.AUCTION_OPENING: {
-      let hrs = nameInfo.info.stats?.hoursUntilBidding || 0;
-      let when =
+      const hrs = nameInfo.info.stats?.hoursUntilBidding || 0;
+      const when =
           Math.floor(hrs) > 0 ? `in about ${units('hour', hrs)}` : 'soon';
-      return `This name is *in auction*\\: The auction for this name is *being opened* right now\\.
-Bidding will begin ${when}\\.`;
+      const blocksLeft = nameInfo.info.stats?.blocksUntilBidding;
+      let text = `The *auction* for this name has just been opened\\.\n`;
+      text += `Bidding will begin ${when} `;
+      text += `\\(${units('block', blocksLeft)} left\\)\\.`;
+
+      return text;
     }
 
     case nameAvails.AUCTION_BIDDING: {
-      let hrs = nameInfo.info.stats?.hoursUntilReveal || 0;
-      let when =
+      const hrs = nameInfo.info.stats?.hoursUntilReveal || 0;
+      const when =
           Math.floor(hrs) > 0 ? `in about ${units('hour', hrs)}` : 'soon';
-      return `This name is *in auction*\\: Bids for this name are being accepted right now\\.
-Bidding will end ${when}\\.`;
+      const blocksLeft = nameInfo.info.stats?.blocksUntilReveal;
+      let text = `This name is *in auction*\\: `;
+      text += `Bids are being accepted right now\\.\n`;
+      text += `Bidding will end ${when} `;
+      text += `\\(${units('block', blocksLeft)} left\\)\\.`;
+      return text;
     }
 
     case nameAvails.AUCTION_REVEAL: {
-      let hrs = nameInfo.info.stats?.hoursUntilClose || 0;
-      let when =
+      const hrs = nameInfo.info.stats?.hoursUntilClose || 0;
+      const when =
           Math.floor(hrs) > 0 ? `in about ${units('hour', hrs)}` : 'soon';
-      return `This name is *in auction*\\: Bids for this name are being revealed right now\\.
-The auction will close ${when}\\.`;
+      const blocksLeft = nameInfo.info.stats?.blocksUntilClose;
+      let text = `This name is *in auction*\\: `;
+      text += `Bids are being revealed right now\\.\n`;
+      text += `Auction will close ${when} `;
+      text += `\\(${units('block', blocksLeft)} left\\)\\.`;
+      return text;
     }
 
     case nameAvails.UNAVAIL_CLOSED: {

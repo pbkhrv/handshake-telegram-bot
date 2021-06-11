@@ -3,6 +3,7 @@ const {Rules} = require('hsd');
 const punycode = require('punycode/');
 const EventEmitter = require('eventemitter3');
 const {getNameActionsFromBlock} = require('./nameactions');
+const {ProcessedBlock} = require('./db');
 
 
 const emittedEvents = {
@@ -38,7 +39,10 @@ class HandshakeQuery extends EventEmitter {
   /**
    * Start watching the blockchain
    */
-  start() {
+  async start() {
+    // Figure out where we left off
+    this.lastSeenBlockHeight = await getLastProcessedBlockHeight();
+
     // start polling blockchain info
     setTimeout(() => this.checkForNewBlock(), 0);
     setInterval(() => this.checkForNewBlock(), 10000);
@@ -46,14 +50,20 @@ class HandshakeQuery extends EventEmitter {
 
   /**
    * Poll Handshake node checking for a new block
+   *
+   * Very primitive approach, but also very simple.
+   * Good enough for now.
    */
   async checkForNewBlock() {
-    console.log('Checking new block');
     const bcInfo = await this.getBlockchainInfo();
-    if (bcInfo.blocks != this.lastSeenBlockHeight) {
-      console.log('NEW BLOCK!!!!');
+    if (bcInfo.blocks > this.lastSeenBlockHeight) {
+      // TODO: handle chain reorgs by comparing heights and hashes
+      // TODO: handle gaps in block heights
+      console.log(`New block mined height ${bcInfo.blocks}, hash ${
+          bcInfo.bestblockhash}`);
       this.lastSeenBlockHeight = bcInfo.blocks;
       await this.processNewBlock(bcInfo);
+      await recordLastProcessedBlock(bcInfo.blocks, bcInfo.bestblockhash);
     }
   }
 
@@ -137,6 +147,7 @@ class HandshakeQuery extends EventEmitter {
   }
 }
 
+
 /**
  * Encode name using punycode
  *
@@ -146,6 +157,7 @@ class HandshakeQuery extends EventEmitter {
 function encodeName(name) {
   return punycode.toASCII(name).toLowerCase();
 }
+
 
 /**
  * Decode encoded name using punycode
@@ -158,10 +170,23 @@ function decodeName(encodedName) {
 }
 
 
+async function getLastProcessedBlockHeight() {
+  const maxBlockHeight = await ProcessedBlock.max('blockHeight');
+  return maxBlockHeight || 0;
+}
+
+
+async function recordLastProcessedBlock(blockHeight, blockHash) {
+  await ProcessedBlock.create({blockHeight, blockHash});
+}
+
+
 module.exports = {
   emittedEvents,
   InvalidNameError,
   HandshakeQuery,
   encodeName,
-  decodeName
+  decodeName,
+  getLastProcessedBlockHeight,
+  recordLastProcessedBlock
 };

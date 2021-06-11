@@ -162,6 +162,7 @@ module.exports = {
   TelegramNameAlert,
   NameAlertBlockHeightTrigger,
   TelegramBlockHeightAlert,
+  ProcessedBlock,
   init,
   recreateAllTables
 };
