@@ -5,49 +5,20 @@ const EventEmitter = require('eventemitter3');
 const {getNameActionsFromBlock} = require('./nameactions');
 
 
+const emittedEvents = {
+  NEW_BLOCK: 'NEW_BLOCK'
+};
+
+
 /**
  * Invalid name error, to be thrown and caught
  */
 class InvalidNameError {}
 
-/**
- * Event: new block was mined
- * @class
- */
-class NewBlockEvent {
-  /**
-   * @constructor
-   * @param {Object} bcInfo result of getblockchaininfo RPC call
-   * @param {NameAction[]} nameActions list of name actions contained in the
-   *     block
-   */
-  constructor(bcInfo, nameActions) {
-    /**
-     * getblockchaininfo RPC call result object
-     * @type {Object}
-     * @public
-     */
-    this.bcInfo = bcInfo;
-
-    /**
-     * Block height of the new block
-     * @type {number}
-     * @public
-     */
-    this.blockHeight = bcInfo.blocks;
-
-    /**
-     * List of name actions included in the block
-     * @type {NameAction[]}
-     * @public
-     */
-    this.nameActions = nameActions;
-  }
-}
-
 
 /**
- * @classdesc Use it to query the Handshake node over RPC and listen for events
+ * Use it to get data and events about the Handshake blockchain
+ * Works by querying the Handshake node over RPC
  */
 class HandshakeQuery extends EventEmitter {
   /**
@@ -102,7 +73,16 @@ class HandshakeQuery extends EventEmitter {
       }
     }
 
-    this.emit('new_block', new NewBlockEvent(bcInfo, nameActions));
+    this.emit(emittedEvents.NEW_BLOCK, {
+      /**
+       * @property {Object} bcInfo result of getblockchaininfo RPC call
+       * @property {NameAction[]} nameActions
+       * @property {number} blockHeight
+       */
+      bcInfo,
+      nameActions,
+      blockHeight: bcInfo.blocks
+    });
   }
 
   /**
@@ -179,8 +159,8 @@ function decodeName(encodedName) {
 
 
 module.exports = {
+  emittedEvents,
   InvalidNameError,
-  NewBlockEvent,
   HandshakeQuery,
   encodeName,
   decodeName

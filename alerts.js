@@ -1,25 +1,25 @@
-const {
-  TelegramNameAlert,
-  NameAlertBlockHeightTrigger,
-  TelegramBlockHeightAlert
-} = require('./db');
 const EventEmitter = require('eventemitter3');
-const {NewBlockEvent} = require('./handshake');
-const {calculateAllFutureMilestones} = require('./namestate');
-const {groupArrayBy, quietJsonParse} = require('./utils');
 const sequelize = require('sequelize');
 const Op = sequelize.Op;
+const {calculateAllFutureMilestones} = require('./namestate');
+const {groupArrayBy, quietJsonParse} = require('./utils');
+const {emittedEvents: handshakeEvents} = require('./handshake');
 const {
   ClaimNameAction,
   OpenAuctionNameAction,
   RegisterNameAction,
   RenewNameAction
 } = require('./nameactions');
+const {
+  TelegramNameAlert,
+  NameAlertBlockHeightTrigger,
+  TelegramBlockHeightAlert
+} = require('./db');
 
 
-const events = {
-  TELEGRAM_NAME_ALERT: 0,
-  TELEGRAM_BLOCK_HEIGHT_ALERT: 1
+const emittedEvents = {
+  TELEGRAM_NAME_ALERT: 'TELEGRAM_NAME_ALERT',
+  TELEGRAM_BLOCK_HEIGHT_ALERT: 'TELEGRAM_BLOCK_HEIGHT_ALERT'
 };
 
 
@@ -74,10 +74,10 @@ async function createTelegramBlockHeightAlert(
 
 /**
  * Delete telegram block height alert
- * 
- * @param {number} chatId 
- * @param {number} blockHeight 
- * @param {string} alertType 
+ *
+ * @param {number} chatId
+ * @param {number} blockHeight
+ * @param {string} alertType
  */
 async function deleteTelegramBlockHeightAlert(chatId, blockHeight, alertType) {
   await TelegramBlockHeightAlert.destroy(
@@ -102,14 +102,15 @@ async function getDistinctNameAlertTargetNames() {
 /**
  * Update name alert triggers based on new name actions
  *
- * @param {NewBlockEvent} newBlockEvt
+ * @param {NameAction[]} nameActions
+ * @param {number} blockHeight
  * @param {function} nameInfoCb async name info lookup callback
  */
-async function updateNameAlertTriggersOnNewBlock(newBlockEvt, nameInfoCb) {
+async function updateNameAlertTriggersOnNewBlock(
+    allNameActions, blockHeight, nameInfoCb) {
   // We are only interested in names for which we have alerts
   const relevantNames = new Set(await getDistinctNameAlertTargetNames());
-  let nameActions =
-      newBlockEvt.nameActions.filter(na => relevantNames.has(na.name));
+  let nameActions = allNameActions.filter(na => relevantNames.has(na.name));
 
   // We only update triggers based on certain actions
   const updateTriggeringActions = {
@@ -127,15 +128,14 @@ async function updateNameAlertTriggersOnNewBlock(newBlockEvt, nameInfoCb) {
   // Peform trigger updates for alerts on affected names
   for (let targetName of affectedNames) {
     const nameInfo = await nameInfoCb(targetName);
-    const milestones =
-        calculateAllFutureMilestones(nameInfo, newBlockEvt.blockHeight);
+    const milestones = calculateAllFutureMilestones(nameInfo, blockHeight);
     const alerts = await TelegramNameAlert.findAll(
         {where: {targetName}, include: 'blockHeightTriggers'});
 
     for (let alert of alerts) {
       for (let trigger of alert.blockHeightTriggers) {
         // Delete previously scheduled future triggers
-        if (!trigger.didFire && trigger.blockHeight > newBlockEvt.blockHeight) {
+        if (!trigger.didFire && trigger.blockHeight > blockHeight) {
           await trigger.destroy();
         }
       }
@@ -186,11 +186,17 @@ async function fireMatchingTelegramNameAlerts(
     }
   }
 
-  // Emit
+  // Deliver alerts
   for (let [chatId, nameTrigs] of Object.entries(triggers)) {
     for (let [encodedName, {nameActions, blockHeightTriggers}] of Object
              .entries(nameTrigs)) {
-      eventEmitter.emit(events.TELEGRAM_NAME_ALERT, {
+      eventEmitter.emit(emittedEvents.TELEGRAM_NAME_ALERT, {
+        /**
+         * @property {number} chatId
+         * @property {string} encodedName
+         * @property {NameAction[]} nameActions
+         * @property {NameAlertBlockHeightTrigger[]}
+         */
         chatId: parseInt(chatId),
         encodedName,
         nameActions,
@@ -280,7 +286,13 @@ async function fireMatchingTelegramBlockHeightAlerts(
     const context = quietJsonParse(alert.contextJson);
 
     // Deliver event
-    eventEmitter.emit(events.TELEGRAM_BLOCK_HEIGHT_ALERT, {
+    eventEmitter.emit(emittedEvents.TELEGRAM_BLOCK_HEIGHT_ALERT, {
+      /**
+       * @property {number} chatId
+       * @property {number} blockHeight
+       * @property {string} alertType
+       * @property {Object} context
+       */
       chatId: alert.chatId,
       blockHeight: alert.blockHeight,
       alertType: alert.alertType,
@@ -345,12 +357,13 @@ class TelegramAlertManager extends EventEmitter {
 
   /**
    *
-   * @param {NewBlockEvent} newBlockEvt
+   * @param {Object} newBlockEvt
    */
   async processNewBlock(newBlockEvt) {
     // Update triggers as necessary
     await updateNameAlertTriggersOnNewBlock(
-        newBlockEvt, async (name) => this.hnsQuery.getNameInfo(name));
+        newBlockEvt.nameActions, newBlockEvt.blockHeightTriggers,
+        async (name) => this.hnsQuery.getNameInfo(name));
 
     // Fire matching name alert triggers
     await fireMatchingTelegramNameAlerts(
@@ -364,11 +377,13 @@ class TelegramAlertManager extends EventEmitter {
    * Subscribe to events
    */
   start() {
-    this.hnsQuery.on('new_block', async (evt) => this.processNewBlock(evt));
+    this.hnsQuery.on(
+        handshakeEvents.NEW_BLOCK, async (evt) => this.processNewBlock(evt));
   }
 }
 
 module.exports = {
+  emittedEvents,
   createTelegramNameAlert,
   createTelegramBlockHeightAlert,
   updateNameAlertTriggersOnNewBlock,
@@ -376,6 +391,5 @@ module.exports = {
   findMatchingBlockHeightTriggers,
   fireMatchingTelegramNameAlerts,
   fireMatchingTelegramBlockHeightAlerts,
-  events,
   TelegramAlertManager
 };

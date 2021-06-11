@@ -34,7 +34,7 @@ const schemaNameTelegramAlert = {
 };
 
 /**
- * @classdesc Trigger for a name alert when some block height has been reached.
+ * Trigger for a name alert when some block height has been reached.
  *
  * This block height is tied to a specific milestone in the context of the name,
  * like "name auction closed" or "registration is expired".
@@ -62,7 +62,14 @@ const schemaNameAlertBlockHeightTrigger = {
 
 
 /**
- *
+ * Alert created by a Telegram user for when particular block height is reached
+ * 
+ * @typedef TelegramBlockHeightAlert
+ * @property {number} chatId
+ * @property {number} blockHeight
+ * @property {string} alertType
+ * @property {boolean} didFire
+ * @property {string} contextJson
  */
 class TelegramBlockHeightAlert extends Model {}
 
@@ -85,6 +92,16 @@ const schemaTelegramBlockHeightAlert = {
   contextJson: {type: DataTypes.STRING, allowNull: true}
 };
 
+
+class ProcessedBlock extends Model {}
+
+const schemaProcessedBlock = {
+  // Block height of the processed block
+  blockHeight: {type: DataTypes.INTEGER, allowNull: false},
+
+  // Block hash of the processed block
+  blockHash: {type: DataTypes.STRING, allowNull: false}
+}
 
 let sequelize = null;
 
@@ -122,6 +139,9 @@ async function init(connectionString, isQueitReinit = false) {
   TelegramBlockHeightAlert.init(
       schemaTelegramBlockHeightAlert,
       {sequelize, modelName: TelegramBlockHeightAlert.name});
+
+  ProcessedBlock.init(
+      schemaProcessedBlock, {sequelize, modelName: ProcessedBlock.name});
 
   // Create schema
   await sequelize.sync();

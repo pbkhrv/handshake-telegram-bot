@@ -3,7 +3,7 @@ const {util} = require('hsd');
 const Slimbot = require('slimbot');
 const {InvalidNameError, encodeName, decodeName} = require('./handshake');
 const {nameAvails, calculateNameAvail, nsMilestones} = require('./namestate');
-const {TelegramAlertManager, events: alertEvents} = require('./alerts');
+const {TelegramAlertManager, emittedEvents: alertEvents} = require('./alerts');
 const {parsePositiveInt} = require('./utils');
 const nacs = require('./nameactions');
 
