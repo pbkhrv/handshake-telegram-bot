@@ -1,0 +1,4 @@
+help - how to use this bot
+name - look up a Handshake name or set alert for it
+nextblock - alert when some block height has been mined
+alerts - list alerts you have set
