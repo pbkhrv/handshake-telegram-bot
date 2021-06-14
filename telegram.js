@@ -10,7 +10,8 @@ const nacs = require('./nameactions');
 const emojis = {
   deleted: '🗑',
   alert: '🚨',
-  checkmark: '✅'
+  checkmark: '✅',
+  frown: '🙁'
 };
 
 
@@ -87,6 +88,10 @@ class TelegramBot {
         await this.sendGreeting(message.chat.id);
         break;
 
+      case '/help_alerts':
+        await this.sendMarkdown(message.chat.id, formatAlertsHelpMarkdown());
+        break;
+
       case '/name':
         await this.processNameCommand(message.chat.id, cmd);
         break;
@@ -95,7 +100,11 @@ class TelegramBot {
         await this.processNextBlockCommand(message.chat.id, cmd.args);
         break;
 
-      // Assuming "/name" or "+COUNT"
+      case '/alerts':
+        await this.processAlertsCommand(message.chat.id);
+        break;
+
+      // Guess the shortcut
       case 'no_command':
         await this.processDefaultCommand(message.chat.id, cmd.text);
         break;
@@ -204,7 +213,8 @@ class TelegramBot {
         if (this.hnsQuery.getCurrentBlockHeight() < blockHeight) {
           await this.slimbot.sendMessage(
               chatId,
-              `${emojis.deleted} Deleted alert for block height ${blockHeight}.`);
+              `${emojis.deleted} Deleted alert for block height ${
+                  blockHeight}.`);
         }
         break;
       }
@@ -360,10 +370,54 @@ class TelegramBot {
     const count = parsePositiveInt(input);
     if (count) {
       await this.processNextBlockCommand(chatId, input);
-    }
-    else {
+    } else {
       await this.processNameCommand(chatId, {args: input});
     }
+  }
+
+
+  /**
+   * Show user all alerts they have set
+   *
+   * @param {number} chatId
+   */
+  async processAlertsCommand(chatId) {
+    const nameAlertNames =
+        await this.alertManager.getTelegramNameAlerts(chatId);
+
+    const blockHeightAlerts =
+        await this.alertManager.getTelegramBlockHeightAlerts(chatId);
+
+    // Help message if no alerts set
+    if (nameAlertNames.length == 0 && blockHeightAlerts.length == 0) {
+      let text =
+          `${emojis.frown} You don't seem to have any alerts set up\\.\n\n`;
+      text += formatAlertsHelpMarkdown();
+      await this.slimbot.sendMessage(chatId, text, {parse_mode: 'MarkdownV2'});
+      return;
+    }
+
+    // Summarize name alerts
+    let text = 'Your alerts\\:\n\n';
+    if (nameAlertNames.length > 0) {
+      text += 'I am watching the following *names* for you\\:\n';
+      text += summarizeNameAlertNames(nameAlertNames);
+      text +=
+          '\n_To cancel a name alert or see its details, send me its Handshake name\\._\n';
+    } else {
+      text += '_You don\'t have any name alerts set\\._\n';
+    }
+    text += '\n';
+
+    // Summarize block height alerts
+    if (blockHeightAlerts.length > 0) {
+      text += 'I am watching the following *block heights* for you\\:\n';
+      text += summarizeBlockHeightAlerts(blockHeightAlerts);
+    }
+
+    text += '_Send /help\\_alerts to see a help message about alerts_\\.';
+
+    await this.slimbot.sendMessage(chatId, text, {parse_mode: 'MarkdownV2'});
   }
 
 
@@ -419,6 +473,7 @@ I can answer queries about Handshake names and deliver alerts related to names, 
 /nextblock \\- I will alert you when the next block has been mined
 /nextblock \`\\+COUNT\` \\- I will alert you when \`COUNT\` blocks from now have been mined
 /nextblock \`HEIGHT\` \\- I will alert you when block height \`HEIGHT\` has been mined
+/alerts \\- list alerts that you have set\\. More information: /help\\_alerts\\.
 
 *Shortcuts\\:* If you don't specify a command, I'll try to guess\\:
 • \`\\+COUNT\` \\(like \`\\+1\`, \`\\+5\` etc\\) is treated like the /nextblock command
@@ -441,6 +496,11 @@ _This bot is a work in progress\\._ Feedback\\? Feature requests\\? Complaints\\
         chatId, `I'm sorry, I don't understand that command.
 
 Please use /help to see the list of commands that I recognize.`);
+  }
+
+  async sendMarkdown(chatId, md) {
+    await this.slimbot.sendMessage(
+        chatId, md, {parse_mode: 'MarkdownV2', disable_web_page_preview: true});
   }
 }
 
@@ -736,7 +796,7 @@ function describeNameAction(nameAction) {
       return '*Claim*\\: This name has been claimed\\!';
 
     case nacs.OpenAuctionNameAction:
-      return '*Auction open*\\: The name auction has been opened\\.';
+      return '*Auction opened*\\: The name auction has been opened\\.';
 
     case nacs.AuctionBidNameAction:
       return `*Bid placed*\\: ${tgsafe('' + nameAction.lockupAmount)} HNS\\.`;
@@ -745,10 +805,14 @@ function describeNameAction(nameAction) {
       return `*Bid revealed*\\: ${tgsafe('' + nameAction.bidAmount)} HNS\\.`;
 
     case nacs.RegisterNameAction:
-      return '*Name registered*\\: The name has been registered\\.';
+      return '*Registered*\\: The name has been registered\\.';
 
     case nacs.RenewNameAction:
-      return '*Name renewed*\\: The name has been renewed\\.';
+      return '*Renewed*\\: The name has been renewed\\.';
+
+    case nacs.TransferNameAction:
+      return '*Transfer initiated*\\: A transfer of the name ' +
+          'to a different address has been initiated\\.';
 
     default:
       return '_Not sure how to describe this action\\. Please check the block explorer link below_\\.';
@@ -768,6 +832,48 @@ function formatBlockMinedAlertMarkdown(
   text += `It was mined approximately ${time} ago\\.\n\n`;
   text += `I'll send you a message when block number `;
   text += `${targetBlockHeight} has been mined\\.`;
+  return text;
+}
+
+
+function formatAlertsHelpMarkdown() {
+  let text = '';
+  text += `*Name alerts*\nI can watch a Handshake name and alert you `;
+  text += `whenever any of the following happens\\:\n`;
+  text += `\\- The name is claimed\n`;
+  text += `\\- Name auction is opened, bidding or reveal periods begin\n`;
+  text += `\\- Anyone bids or reveals a bid in the name auction\n`;
+  text += `\\- Name is registered, transferred, updated, expired or renewed\n`;
+  text +=
+      `_To create a name alert_\\: send me the name you are interested in, `;
+  text += `then click \`Create alert\`\\.\n`;
+  text += `\n`;
+  text += `*Block height alerts*\nI can alert you whenever a `;
+  text += `particular block height has been mined\\.\n`;
+  text += `_To create a block height alert_\\: see /help `;
+  text += `for details of the \`nextblock\` command\\.\n`;
+  return text;
+}
+
+
+function summarizeNameAlertNames(encodedNames) {
+  let text = '';
+  for (let en of encodedNames) {
+    const name = decodeName(en);
+    text += `\\- *${tgsafe(name)}*`;
+    // Include punycode if necessary
+    text += (name != en) ? `\\(punycode \`${tgsafe(en)}\`\\)\n` : '\n';
+  }
+  return text;
+}
+
+
+function summarizeBlockHeightAlerts(alerts) {
+  let text = '';
+  for (let alert of alerts) {
+    // TODO: handle different alertType's
+    text += `\\- *${alert.blockHeight}\\:* Block mined alert\n`;
+  }
   return text;
 }
 

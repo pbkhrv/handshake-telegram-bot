@@ -307,6 +307,26 @@ async function fireMatchingTelegramBlockHeightAlerts(
 
 
 /**
+ * Get target names for all name alerts for particular Telegram chat
+ *
+ * @param {number} chatId
+ * @returns {string[]} list of names
+ */
+async function getTelegramNameAlerts(chatId) {
+  const alerts = await TelegramNameAlert.findAll({where: {chatId}});
+  return alerts.map(a => a.targetName);
+}
+
+
+async function getTelegramBlockHeightAlerts(chatId) {
+  const alerts =
+      await TelegramBlockHeightAlert.findAll({where: {chatId, didFire: false}});
+  return alerts.map(
+      (a) => ({blockHeight: a.blockHeight, alertType: a.alertType}));
+}
+
+
+/**
  * Create, list, delete telegram alerts
  */
 class TelegramAlertManager extends EventEmitter {
@@ -317,6 +337,8 @@ class TelegramAlertManager extends EventEmitter {
     // Hack? You betcha.
     this.createTelegramBlockHeightAlert = createTelegramBlockHeightAlert;
     this.deleteTelegramBlockHeightAlert = deleteTelegramBlockHeightAlert;
+    this.getTelegramNameAlerts = getTelegramNameAlerts;
+    this.getTelegramBlockHeightAlerts = getTelegramBlockHeightAlerts;
   }
 
   /**
