@@ -1,11 +1,12 @@
 const {states} = require('hsd/lib/covenants/namestate');
-const {util} = require('hsd');
+const {util: handshakeUtil, Network} = require('hsd');
 const Slimbot = require('slimbot');
 const {InvalidNameError, encodeName, decodeName} = require('./handshake');
-const {nameAvails, calculateNameAvail, nsMilestones} = require('./namestate');
+const {nameAvails, calculateNameAvail, nsMilestones, milestoneLabels} =
+    require('./namestate');
 const {TelegramAlertManager, emittedEvents: alertEvents} = require('./alerts');
-const {parsePositiveInt} = require('./utils');
-const nacs = require('./nameactions');
+const {parsePositiveInt, parseBlockNum, blocksToApproxDaysOrHours, numUnits} =
+    require('./utils');
 
 const emojis = {
   deleted: '🗑',
@@ -159,15 +160,17 @@ class TelegramBot {
               queryId, {text: 'Something went wrong...'});
           return;
         }
+        const name = decodeName(encodedName);
 
         await this.alertManager.createNameAlert(chatId, encodedName);
         await this.slimbot.answerCallbackQuery(
-            queryId, {text: `Created alert for name '${encodedName}'`});
+            queryId, {text: 'Alert created'});
         if (message?.message_id) {
           await this.slimbot.editMessageReplyMarkup(
               chatId, message.message_id,
-              JSON.stringify(nameAlertInlineKeyboard(encodedName, true)));
+              JSON.stringify(emptyInlineKeyboard()));
         }
+        await this.sendNameAlertDetails(chatId, encodedName);
         break;
       }
 
@@ -180,6 +183,7 @@ class TelegramBot {
               queryId, {text: 'Something went wrong...'});
           return;
         }
+        const name = decodeName(encodedName);
         await this.alertManager.deleteNameAlert(chatId, encodedName);
         await this.slimbot.answerCallbackQuery(
             queryId, {text: 'Alert deleted'});
@@ -191,8 +195,8 @@ class TelegramBot {
               JSON.stringify(emptyInlineKeyboard()));
         }
 
-        await this.slimbot.sendMessage(
-            chatId, `${emojis.deleted} Deleted alert for \`${encodedName}\``);
+        await this.sendMarkdown(
+            chatId, `${emojis.deleted} Deleted alert for *${tgsafe(name)}*`);
         break;
       }
 
@@ -211,10 +215,10 @@ class TelegramBot {
 
         // If this alert is current, acknowledge its deletion
         if (this.hnsQuery.getCurrentBlockHeight() < blockHeight) {
-          await this.slimbot.sendMessage(
+          await this.sendMarkdown(
               chatId,
-              `${emojis.deleted} Deleted alert for block height ${
-                  blockHeight}.`);
+              `${emojis.deleted} Deleted alert for block height \`\\#${
+                  blockHeight}\`\\.`);
         }
         break;
       }
@@ -275,20 +279,20 @@ class TelegramBot {
       const encodedName = encodeName(name);
       const nameInfo = await this.hnsQuery.getNameInfo(encodedName);
       const nameState = calculateNameAvail(nameInfo);
-      const existsAlert =
+      const alertExists =
           await this.alertManager.checkExistsNameAlert(chatId, encodedName);
 
-      const text = formatNameInfoMarkdown(
-          name, encodedName, nameState, nameInfo, existsAlert);
+      const text =
+          formatNameInfoMarkdown(name, encodedName, nameState, nameInfo);
 
-      const tgParams = {
-        parse_mode: 'MarkdownV2',
-        disable_web_page_preview: true,
-        reply_markup:
-            JSON.stringify(nameAlertInlineKeyboard(encodedName, existsAlert))
-      };
-
-      await this.slimbot.sendMessage(chatId, text, tgParams);
+      // Let user create an alert if one doesn't exist
+      if (!alertExists) {
+        await this.sendMarkdown(
+            chatId, text, nameAlertInlineKeyboard(encodedName, false));
+      } else {
+        await this.sendMarkdown(chatId, text);
+        await this.sendNameAlertDetails(chatId, name);
+      }
     } catch (e) {
       if (e instanceof InvalidNameError) {
         // Notify user if name is invalid
@@ -313,14 +317,8 @@ class TelegramBot {
       {chatId, encodedName, blockHeightTriggers, nameActions}) {
     const text =
         formatNameAlertMarkdown(encodedName, blockHeightTriggers, nameActions);
-
-    const tgParams = {
-      parse_mode: 'MarkdownV2',
-      disable_web_page_preview: true,
-      reply_markup: JSON.stringify(nameAlertInlineKeyboard(encodedName, true))
-    };
-
-    await this.slimbot.sendMessage(chatId, text, tgParams);
+    await this.sendMarkdown(
+        chatId, text, nameAlertInlineKeyboard(encodedName, true));
   }
 
 
@@ -341,7 +339,8 @@ class TelegramBot {
     if (relativeNumber) {
       targetBlockHeight = blockHeight + relativeNumber;
     } else {
-      const number = parseInt(inputTargetBlockHeight);
+      const number = parseBlockNum(inputTargetBlockHeight) ||
+          parseInt(inputTargetBlockHeight);
       if (number && number > blockHeight) {
         targetBlockHeight = number;
       }
@@ -367,12 +366,13 @@ class TelegramBot {
 
   async processDefaultCommand(chatId, input) {
     // Is this a "+COUNT" nextblock shortcut?
-    const count = parsePositiveInt(input);
-    if (count) {
+    const nextblock = parsePositiveInt(input) || parseBlockNum(input);
+    if (nextblock) {
       await this.processNextBlockCommand(chatId, input);
-    } else {
-      await this.processNameCommand(chatId, {args: input});
+      return;
     }
+
+    await this.processNameCommand(chatId, {args: input});
   }
 
 
@@ -413,6 +413,7 @@ class TelegramBot {
     if (blockHeightAlerts.length > 0) {
       text += 'I am watching the following *block heights* for you\\:\n';
       text += summarizeBlockHeightAlerts(blockHeightAlerts);
+      text += '\n';
     }
 
     text += '_Send /help\\_alerts to see a help message about alerts_\\.';
@@ -427,7 +428,7 @@ class TelegramBot {
 
     const blockHash = bcInfo.bestblockhash;
     const block = await this.hnsQuery.getBlockByHash(blockHash);
-    const secondsSinceMined = util.now() - block.time;
+    const secondsSinceMined = handshakeUtil.now() - block.time;
     return secondsSinceMined;
   }
 
@@ -476,12 +477,13 @@ I can answer queries about Handshake names and deliver alerts related to names, 
 /alerts \\- list alerts that you have set\\. More information: /help\\_alerts\\.
 
 *Shortcuts\\:* If you don't specify a command, I'll try to guess\\:
-• \`\\+COUNT\` \\(like \`\\+1\`, \`\\+5\` etc\\) is treated like the /nextblock command
+• \`\\+COUNT\` \\(like \`\\+1\`, \`\\+5\` etc\\) is same as \`/nextblock +COUNT\` command
+• \`\\#HEIGHT\` \\(like \`\\#77251\` etc\\) is same as \`/nextblock HEIGHT\` command
 • Try to look up anything that looks like a name
 
 Please note: _I handle emojis and unicode automatically\\: you don\\'t have to do [punycode](https://en.wikipedia.org/wiki/Punycode) conversion for names that include characters other than letters and numbers\\._
 
-_This bot is a work in progress\\._ Feedback\\? Feature requests\\? Complaints\\? [Would love to hear from you\\!](https://t.me/allmyhinges)`;
+_This bot is a proof\\-of\\-concept work in progress\\._ Feedback\\? Feature requests\\? Complaints\\? [Would love to hear from you\\!](https://t.me/allmyhinges)`;
 
     await this.slimbot.sendMessage(chatId, text, params);
   }
@@ -498,9 +500,53 @@ _This bot is a work in progress\\._ Feedback\\? Feature requests\\? Complaints\\
 Please use /help to see the list of commands that I recognize.`);
   }
 
-  async sendMarkdown(chatId, md) {
-    await this.slimbot.sendMessage(
-        chatId, md, {parse_mode: 'MarkdownV2', disable_web_page_preview: true});
+  async sendMarkdown(chatId, md, inlineKeyboard = null) {
+    const params = {parse_mode: 'MarkdownV2', disable_web_page_preview: true};
+    if (inlineKeyboard) {
+      params.reply_markup = JSON.stringify(inlineKeyboard);
+    }
+    await this.slimbot.sendMessage(chatId, md, params);
+  }
+
+  async sendNameAlertDetails(chatId, name) {
+    const encodedName = encodeName(name);
+    const alert =
+        await this.alertManager.getTelegramNameAlert(chatId, encodedName);
+    const blockHeight = await this.hnsQuery.getCurrentBlockHeight();
+    const secondsPerBlock = Network.get().pow.targetSpacing;
+
+    if (!alert) {
+      return;
+    }
+
+    let text = `You have an alert set for the name *${tgsafe(name)}*`;
+    if (encodedName != name) {
+      text += ` \\(punycode \`${tgsafe(encodedName)}\`\\)`;
+    }
+    text += '\n';
+
+    if (alert.blockHeightTriggers && alert.blockHeightTriggers.length > 0) {
+      text += '\nUpcoming block height milestones\\:\n';
+      for (let trigger of alert.blockHeightTriggers) {
+        const label =
+            milestoneLabels[trigger.nsMilestone] || trigger.nsMilestone;
+        const blocks = trigger.blockHeight - blockHeight;
+        const timeLeft = blocksToApproxDaysOrHours(blocks, secondsPerBlock);
+        // text += `\\- ${trigger.blockHeight}*\\: ${tgsafe(label)}\n`;
+        text += `\\- in *${numUnits('block', blocks)}* `;
+        if (timeLeft) {
+          text += ` \\(\\~${timeLeft}\\)`;
+        }
+        text +=
+            `\\: ${tgsafe(label)} \\(block \`\\#${trigger.blockHeight}\`\\)\n`;
+      }
+    } else {
+      text += '\nI will alert you as soon as any transactions ' +
+          'that affect the state of this name are posted to the blockchain\\.';
+    }
+
+    await this.sendMarkdown(
+        chatId, text, nameAlertInlineKeyboard(encodedName, true));
   }
 }
 
@@ -579,8 +625,7 @@ function tgsafe(text) {
   return text.replace(specialCharsRegex, '\\$&');
 }
 
-function formatNameInfoMarkdown(
-    name, encodedName, nameState, nameInfo, existsAlert) {
+function formatNameInfoMarkdown(name, encodedName, nameState, nameInfo) {
   // Header
   let text = `Name: *${tgsafe(name)}*\n`;
 
@@ -599,10 +644,6 @@ function formatNameInfoMarkdown(
   text += `See details on`;
   text += ` [Namebase](https://www.namebase.io/domains/${encodedName})`;
   text += ` or [block explorer](https://hnsnetwork.com/names/${encodedName})\n`;
-
-  if (existsAlert) {
-    text += '\n_You have an alert set for this name\\._';
-  }
 
   return text;
 }
@@ -728,8 +769,9 @@ function formatNameStateDetailsMarkdown(nameState, nameInfo) {
       return 'This name is being transferred from one address to another\\.';
 
     default:
-      return `I'm not sure how to summarize the state of this name\\.\\.\\.
-Please click one of the links below to see the details\\.`;
+      return `I'm not sure how to summarize the state of this name ` +
+          `\\(${tgsafe(nameState)}\\)\\.\\.\\.\n` +
+          `Please click one of the links below to see the details\\.`;
   }
 }
 
@@ -780,8 +822,8 @@ function describeMilestone(milestone) {
       text += '*Transfer finalizing*\\: The name transfer ';
       text += 'is waiting to be finalized\\.'
 
-    case nsMilestones.REGISTRATION_EXPIRED:
-      text += '*Registration expired*\\: The name registration';
+      case nsMilestones.REGISTRATION_EXPIRED: text +=
+          '*Registration expired*\\: The name registration';
       text += ' has not been renewed in time';
       text += ' and it is available for a new auction\\.';
       break;
@@ -836,8 +878,8 @@ function describeNameAction(nameAction) {
     case 'REVOKE':
       return '*Name revoked*\\: The name has been revoked\\.'
 
-    default:
-      return '_Not sure how to describe this action\\. Please check the block explorer link below_\\.';
+          default:
+              return '_Not sure how to describe this action\\. Please check the block explorer link below_\\.';
   }
 }
 
@@ -852,8 +894,8 @@ function formatBlockMinedAlertMarkdown(
   text +=
       `*[${blockHeight}](https://hnsnetwork.com/blocks/${blockHeight})*\\.\n`;
   text += `It was mined approximately ${time} ago\\.\n\n`;
-  text += `I'll send you a message when block number `;
-  text += `${targetBlockHeight} has been mined\\.`;
+  text += `I'll send you a message when block `;
+  text += `\`\\#${targetBlockHeight}\` has been mined\\.`;
   return text;
 }
 

@@ -308,10 +308,29 @@ async function getTelegramNameAlerts(chatId) {
   return alerts.map(a => a.targetName);
 }
 
+async function getTelegramNameAlert(chatId, encodedName) {
+  const alert = await TelegramNameAlert.findOne(
+      {where: {chatId, targetName: encodedName}});
+
+  if (!alert) {
+    return null;
+  }
+
+  // Load triggers separately because
+  // i can't figure out syntax for eager loading with ordering while having
+  // models under aliases
+  // fml
+  const triggers = await NameAlertBlockHeightTrigger.findAll({
+    where: {alertId: alert.id, didFire: false},
+    order: [['blockHeight', 'ASC']]
+  });
+
+  return {blockHeightTriggers: triggers};
+}
 
 async function getTelegramBlockHeightAlerts(chatId) {
-  const alerts =
-      await TelegramBlockHeightAlert.findAll({where: {chatId, didFire: false}});
+  const alerts = await TelegramBlockHeightAlert.findAll(
+      {where: {chatId, didFire: false}, order: [['blockHeight', 'ASC']]});
   return alerts.map(
       (a) => ({blockHeight: a.blockHeight, alertType: a.alertType}));
 }
@@ -330,6 +349,7 @@ class TelegramAlertManager extends EventEmitter {
     this.deleteTelegramBlockHeightAlert = deleteTelegramBlockHeightAlert;
     this.getTelegramNameAlerts = getTelegramNameAlerts;
     this.getTelegramBlockHeightAlerts = getTelegramBlockHeightAlerts;
+    this.getTelegramNameAlert = getTelegramNameAlert;
   }
 
   /**

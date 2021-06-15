@@ -30,6 +30,17 @@ const nameAvails = {
   AUCTION_REVEAL: 'AUCTION_REVEAL'
 };
 
+const milestoneLabels = {
+  AUCTION_OPENING: 'Auction opens',
+  AUCTION_BIDDING: 'Bidding begins',
+  AUCTION_REVEAL: 'Bid reveals begin',
+  AUCTION_CLOSED: 'Auction closes',
+  NAME_LOCKED: 'Name is locked',
+  NAME_UNLOCKED: 'Name is unlocked',
+  REGISTRATION_EXPIRED: 'Name registration expires',
+  TRANSFER_IN_PROGRESS: 'Name transfer initiated',
+  TRANSFER_FINALIZING: 'Name transfer can be finalized'
+};
 
 /**
  * Figure out name availability based on the results of the getNameInfo RPC call
@@ -239,6 +250,7 @@ function calculateAllFutureMilestones(nameInfo, currentBlockHeight) {
 module.exports = {
   nsMilestones,
   nameAvails,
+  milestoneLabels,
   calculateAuctionMilestones,
   calculateLockupMilestones,
   calculateRenewalMilestones,

@@ -1,4 +1,4 @@
-const {validateExtract, parsePositiveInt} = require('../utils');
+const {validateExtract, parsePositiveInt, parseBlockNum} = require('../utils');
 
 test('validateExtract works with simple stuff', () => {
   const obj = {sss: 'asdf', nummm: 12, ign: 'qwe', obbb: {k: 'v'}};
@@ -18,7 +18,7 @@ test('validateExtract works with simple stuff', () => {
   expect(k).toBe('v');
 });
 
-test('parses relative number', () => {
+test('parses positive number', () => {
   let number = parsePositiveInt('  +10  ');
   expect(number).toBe(10);
   number = parsePositiveInt('  + 9  ');
@@ -30,5 +30,22 @@ test('parses relative number', () => {
   number = parsePositiveInt('34353');
   expect(number).toBeFalsy();
   number = parsePositiveInt('not a number');
+  expect(number).toBeFalsy();
+});
+
+test('parses block number', () => {
+  let number = parseBlockNum('  #10  ');
+  expect(number).toBe(10);
+  number = parseBlockNum('  # 9  ');
+  expect(number).toBe(9);
+  number = parseBlockNum('  #nada  ');
+  expect(number).toBeFalsy();
+  number = parseBlockNum('  - 9  ');
+  expect(number).toBeFalsy();
+  number = parseBlockNum('blah+6=what');
+  expect(number).toBeFalsy();
+  number = parseBlockNum('34353');
+  expect(number).toBeFalsy();
+  number = parseBlockNum('not a number');
   expect(number).toBeFalsy();
 })

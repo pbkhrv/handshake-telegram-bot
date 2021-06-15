@@ -82,10 +82,37 @@ function parsePositiveInt(input) {
   return match ? parseInt(match[1]) : null;
 }
 
+function parseBlockNum(input) {
+  const regexp = /^ *\# *([0-9]+) *$/;
+  const match = input.match(regexp);
+  return match ? parseInt(match[1]) : null;
+}
+
+function numUnits(unit, num) {
+  num = Math.floor(num);
+  return num == 1 ? `1 ${unit}` : `${num} ${unit}s`;
+}
+
+function blocksToApproxDaysOrHours(blocks, secondsPerBlock) {
+  const hours = (blocks * secondsPerBlock) / 60 / 60;
+  const days = hours / 24;
+  if (days > 1.5) {
+    return numUnits('day', Math.round(days));
+  }
+  else if (hours > 1) {
+    return numUnits('hour', Math.round(hours));
+  }
+  else {
+    return undefined;
+  }
+}
 
 module.exports = {
   validateExtract,
   groupArrayBy,
   quietJsonParse,
-  parsePositiveInt
+  parsePositiveInt,
+  parseBlockNum,
+  numUnits,
+  blocksToApproxDaysOrHours
 };
