@@ -5,8 +5,13 @@ const {InvalidNameError, encodeName, decodeName} = require('./handshake');
 const {nameAvails, calculateNameAvail, nsMilestones, milestoneLabels} =
     require('./namestate');
 const {TelegramAlertManager, emittedEvents: alertEvents} = require('./alerts');
-const {parsePositiveInt, parseBlockNum, blocksToApproxDaysOrHours, numUnits} =
-    require('./utils');
+const {
+  parsePositiveInt,
+  parseBlockNum,
+  blocksToApproxDaysOrHours,
+  numUnits,
+  cleanHandshakeName
+} = require('./utils');
 const stats = require('./stats');
 
 const emojis = {
@@ -281,7 +286,7 @@ class TelegramBot {
    * @param {Object} cmd - command to be processed
    */
   async processNameCommand(chatId, cmd, fromShortcut = false) {
-    let name = cmd.args?.toLowerCase().replace('/', '');
+    let name = cleanHandshakeName(cmd.args || '');
     let statsExtra = fromShortcut ? 'sc' : '';
 
     // If command is incomplete, ask for more information

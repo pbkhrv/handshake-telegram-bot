@@ -107,6 +107,21 @@ function blocksToApproxDaysOrHours(blocks, secondsPerBlock) {
   }
 }
 
+/**
+ * Clean up Handshake name received from user
+ * 
+ * @param {string} rawName unformatted name received from user perhaps
+ * @returns {string} cleaned name
+ */
+function cleanHandshakeName(rawName) {
+  const trailingSlash = /\/ *$/;
+  const trailingDot = /\. *$/;
+  let name = rawName.toLowerCase();
+  name = name.replace(trailingSlash, '');
+  name = name.replace(trailingDot, '');
+  return name;
+}
+
 module.exports = {
   validateExtract,
   groupArrayBy,
@@ -114,5 +129,6 @@ module.exports = {
   parsePositiveInt,
   parseBlockNum,
   numUnits,
-  blocksToApproxDaysOrHours
+  blocksToApproxDaysOrHours,
+  cleanHandshakeName
 };
