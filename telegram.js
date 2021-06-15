@@ -932,7 +932,10 @@ function formatBlockMinedAlertMarkdown(
   let text = 'Current block height is ';
   text +=
       `*[${blockHeight}](https://hnsnetwork.com/blocks/${blockHeight})*\\.\n`;
-  text += `It was mined approximately ${time} ago\\.\n\n`;
+  if (secondsSinceMined > 0) {
+    text += `It was mined approximately ${time} ago\\.\n`;
+  }
+  text += '\n';
   text += `I'll send you a message when block `;
   text += `\`\\#${targetBlockHeight}\` has been mined\\.`;
   return text;
