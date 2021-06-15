@@ -7,6 +7,7 @@ const {nameAvails, calculateNameAvail, nsMilestones, milestoneLabels} =
 const {TelegramAlertManager, emittedEvents: alertEvents} = require('./alerts');
 const {parsePositiveInt, parseBlockNum, blocksToApproxDaysOrHours, numUnits} =
     require('./utils');
+const stats = require('./stats');
 
 const emojis = {
   deleted: '🗑',
@@ -85,11 +86,17 @@ class TelegramBot {
 
     switch (cmd.command) {
       case '/start':
+        stats.logReceivedCommand(message.chat.id, 'start');
+        await this.sendGreeting(message.chat.id);
+        break;
+
       case '/help':
+        stats.logReceivedCommand(message.chat.id, 'help');
         await this.sendGreeting(message.chat.id);
         break;
 
       case '/help_alerts':
+        stats.logReceivedCommand(message.chat.id, 'help_alerts');
         await this.sendMarkdown(message.chat.id, formatAlertsHelpMarkdown());
         break;
 
@@ -102,7 +109,13 @@ class TelegramBot {
         break;
 
       case '/alerts':
+        stats.logReceivedCommand(message.chat.id, 'alerts');
         await this.processAlertsCommand(message.chat.id);
+        break;
+
+      case '/stats':
+        stats.logReceivedCommand(message.chat.id, 'stats');
+        await this.processStatsCommand(message.chat.id);
         break;
 
       // Guess the shortcut
@@ -111,6 +124,7 @@ class TelegramBot {
         break;
 
       default:
+        stats.logReceivedCommand(message.chat.id, 'unk');
         await this.sendUnknownCommandNotice(message.chat.id);
     }
   }
@@ -153,6 +167,7 @@ class TelegramBot {
       // TODO: refactor this into a "toggle name alert" command instead of
       // create/delete Create name alert
       case 'cna': {
+        stats.logReceivedCommand(chatId, 'cna');
         const encodedName = queryArgs[1];
         if (!encodedName) {
           console.log('cbQuery: cna command without param');
@@ -176,6 +191,7 @@ class TelegramBot {
 
       // Delete name alert
       case 'dna': {
+        stats.logReceivedCommand(chatId, 'dna');
         const encodedName = queryArgs[1];
         if (!encodedName) {
           console.log('cbQuery: dna command without param');
@@ -201,6 +217,7 @@ class TelegramBot {
       }
 
       case 'dbha': {
+        stats.logReceivedCommand(chatId, 'dbha');
         const [, alertType, blockHeight] = queryArgs;
         if (alertType && blockHeight) {
           await this.alertManager.deleteTelegramBlockHeightAlert(
@@ -263,17 +280,21 @@ class TelegramBot {
    * @param {string} chatId - telegram chat id to respond to
    * @param {Object} cmd - command to be processed
    */
-  async processNameCommand(chatId, cmd) {
+  async processNameCommand(chatId, cmd, fromShortcut = false) {
     let name = cmd.args?.toLowerCase();
+    let statsExtra = fromShortcut ? 'sc' : '';
 
     // If command is incomplete, ask for more information
     if (!name) {
+      stats.logReceivedCommand(chatId, 'name', statsExtra + 'inc');
       // Store the current command to be completed when the next message comes
       this.incompleteCommands[chatId] = cmd;
       await this.slimbot.sendMessage(
           chatId, 'What name would you like me to lookup?')
       return;
     }
+
+    stats.logReceivedCommand(chatId, 'name', statsExtra);
 
     try {
       const encodedName = encodeName(name);
@@ -327,8 +348,10 @@ class TelegramBot {
    * @param {number} chatId
    * @param {string} inputTargetBlockHeight user input target block height
    */
-  async processNextBlockCommand(chatId, inputTargetBlockHeight) {
+  async processNextBlockCommand(
+      chatId, inputTargetBlockHeight, fromShortcut = false) {
     const blockHeight = await this.hnsQuery.getCurrentBlockHeight();
+    let statsExtra = fromShortcut ? 'sc' : '';
 
     // Figure out which block height we should be alerting on:
     // - by default, next block
@@ -337,12 +360,16 @@ class TelegramBot {
     let targetBlockHeight = blockHeight + 1;  // default
     const relativeNumber = parsePositiveInt(inputTargetBlockHeight);
     if (relativeNumber) {
+      stats.logReceivedCommand(chatId, 'nextblock', statsExtra + 'rel');
       targetBlockHeight = blockHeight + relativeNumber;
     } else {
       const number = parseBlockNum(inputTargetBlockHeight) ||
           parseInt(inputTargetBlockHeight);
       if (number && number > blockHeight) {
+        stats.logReceivedCommand(chatId, 'nextblock', statsExtra + 'abs');
         targetBlockHeight = number;
+      } else {
+        stats.logReceivedCommand(chatId, 'nextblock', statsExtra);
       }
     }
 
@@ -363,12 +390,24 @@ class TelegramBot {
     });
   }
 
+  async processStatsCommand(chatId) {
+    const uniqChats = await stats.uniqueChats();
+    const commandCounts = await stats.commandCounts();
+    const activeAlerts = await stats.activeNameAlerts();
+    let text = `Unique chats\\: ${uniqChats}\n`;
+    text += `Total active name alerts\\: ${activeAlerts}\n`;
+    text += 'Command counts\\:\n';
+    for (let {command, count} of commandCounts) {
+      text += `\\- *${command}*\\: ${count}\n`;
+    }
+    this.sendMarkdown(chatId, text);
+  }
 
   async processDefaultCommand(chatId, input) {
     // Is this a "+COUNT" nextblock shortcut?
     const nextblock = parsePositiveInt(input) || parseBlockNum(input);
     if (nextblock) {
-      await this.processNextBlockCommand(chatId, input);
+      await this.processNextBlockCommand(chatId, input, true);
       return;
     }
 

@@ -63,7 +63,7 @@ const schemaNameAlertBlockHeightTrigger = {
 
 /**
  * Alert created by a Telegram user for when particular block height is reached
- * 
+ *
  * @typedef TelegramBlockHeightAlert
  * @property {number} chatId
  * @property {number} blockHeight
@@ -102,6 +102,18 @@ const schemaProcessedBlock = {
   // Block hash of the processed block
   blockHash: {type: DataTypes.STRING, allowNull: false}
 }
+
+
+// For keeping simple usage stats
+class StatsReceivedCommand extends Model {}
+
+const schemaStatsReceivedCommand = {
+  // not keeping names on purpose, because less user-gen data is better
+  chatId: {type: DataTypes.INTEGER, allowNull: false},
+  command: {type: DataTypes.STRING, allowNull: false},
+  // Optional extra data for stats
+  extraParam: {type: DataTypes.STRING, allowNull: true}
+};
 
 let sequelize = null;
 
@@ -143,6 +155,10 @@ async function init(connectionString, isQueitReinit = false) {
   ProcessedBlock.init(
       schemaProcessedBlock, {sequelize, modelName: ProcessedBlock.name});
 
+  StatsReceivedCommand.init(
+      schemaStatsReceivedCommand,
+      {sequelize, modelName: StatsReceivedCommand.name});
+
   // Create schema
   await sequelize.sync();
 }
@@ -163,6 +179,7 @@ module.exports = {
   NameAlertBlockHeightTrigger,
   TelegramBlockHeightAlert,
   ProcessedBlock,
+  StatsReceivedCommand,
   init,
   recreateAllTables
 };
