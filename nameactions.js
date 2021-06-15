@@ -66,7 +66,7 @@ const actions = {
   [types.UPDATE]: {
     extract(vout) {
       return {
-        action: [vout.covenant?.action, {type: 'string', match: 'REGISTER'}],
+        action: [vout.covenant?.action, {type: 'string', match: 'UPDATE'}],
         nameHash: [vout.covenant?.items?.[0]]
       };
     }
