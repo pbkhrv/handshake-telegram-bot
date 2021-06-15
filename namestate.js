@@ -1,27 +1,33 @@
 const {Network} = require('hsd');
 
 // Ugly. Better way?
+// Redundant because these developed organically. Time to clean up.
+// TODO: combine the two enums into one
+// TODO: derive isAvailable status from milestone
 const nsMilestones = {
-  AUCTION_OPENING: "AUCTION_OPENING",
-  AUCTION_BIDDING: "AUCTION_BIDDING",
-  AUCTION_REVEAL: "AUCTION_REVEAL",
-  AUCTION_CLOSED: "AUCTION_CLOSED",
-  NAME_LOCKED: "NAME_LOCKED",
-  NAME_UNLOCKED: "NAME_UNLOCKED",
-  REGISTRATION_EXPIRED: "REGISTRATION_EXPIRED"
+  AUCTION_OPENING: 'AUCTION_OPENING',
+  AUCTION_BIDDING: 'AUCTION_BIDDING',
+  AUCTION_REVEAL: 'AUCTION_REVEAL',
+  AUCTION_CLOSED: 'AUCTION_CLOSED',
+  NAME_LOCKED: 'NAME_LOCKED',
+  NAME_UNLOCKED: 'NAME_UNLOCKED',
+  REGISTRATION_EXPIRED: 'REGISTRATION_EXPIRED',
+  TRANSFER_IN_PROGRESS: 'TRANSFER_IN_PROGRESS',
+  TRANSFER_FINALIZING: 'TRANSFER_FINALIZING'
 };
 
 const nameAvails = {
-  OTHER: "OTHER",
-  UNAVAIL_RESERVED: "UNAVAIL_RESERVED",
-  UNAVAIL_CLAIMING: "UNAVAIL_CLAIMING",
-  UNAVAIL_CLOSED: "UNAVAIL_CLOSED",
-  AVAIL_NEVER_REGISTERED: "AVAIL_NEVER_REGISTERED",
-  AVAIL_NOT_RENEWED: "AVAIL_NOT_RENEWED",
+  OTHER: 'OTHER',
+  UNAVAIL_RESERVED: 'UNAVAIL_RESERVED',
+  UNAVAIL_CLAIMING: 'UNAVAIL_CLAIMING',
+  UNAVAIL_TRANSFERRING: 'UNAVAIL_TRANSFERRING',
+  UNAVAIL_CLOSED: 'UNAVAIL_CLOSED',
+  AVAIL_NEVER_REGISTERED: 'AVAIL_NEVER_REGISTERED',
+  AVAIL_NOT_RENEWED: 'AVAIL_NOT_RENEWED',
   // TODO: replace all auction states with one state "IN_AUCTION"
-  AUCTION_OPENING: "AUCTION_OPENING",
-  AUCTION_BIDDING: "AUCTION_BIDDING",
-  AUCTION_REVEAL: "AUCTION_REVEAL"
+  AUCTION_OPENING: 'AUCTION_OPENING',
+  AUCTION_BIDDING: 'AUCTION_BIDDING',
+  AUCTION_REVEAL: 'AUCTION_REVEAL'
 };
 
 
@@ -41,6 +47,12 @@ function calculateNameAvail(nameInfo) {
   if (nameInfo.start.reserved && nameInfo.info?.state == 'LOCKED' &&
       nameInfo.info?.claimed !== 0) {
     return nameAvails.UNAVAIL_CLAIMING;
+  }
+
+  // Unavailable: being transferred
+  if (nameInfo.info?.state == 'CLOSED' &&
+      nameInfo.info?.stats?.blocksUntilValidFinalize !== undefined) {
+    return nameAvails.UNAVAIL_TRANSFERRING;
   }
 
   // Unavailable: auction closed or claim completed
@@ -183,18 +195,42 @@ function calculateRenewalMilestones(nameInfo) {
 }
 
 
+function calculateTransferMilestones(nameInfo) {
+  const info = nameInfo.info;
+  const state = info?.state;
+  const stats = info?.stats;
+  const milestones = [];
+
+  // Assuming that if there's lockup start then there's lockup end too
+  if (info && info.owner && state == 'CLOSED' && stats.transferLockupStart) {
+    milestones.push({
+      nsMilestone: nsMilestones.TRANSFER_IN_PROGRESS,
+      blockHeight: stats.transferLockupStart
+    });
+
+    milestones.push({
+      nsMilestone: nsMilestones.TRANSFER_FINALIZING,
+      blockHeight: stats.transferLockupEnd
+    });
+  }
+
+  return milestones;
+}
+
+
 /**
  * Find milestones for this nameInfo that will happen after this block height
  *
  * @param {Object} nameInfo
  * @param {number} currentBlockHeight
- * @returns {Object[]}
+ * @returns {Object[]} unordered milestones
  */
 function calculateAllFutureMilestones(nameInfo, currentBlockHeight) {
   // Calculate all milestones
   const milestones = calculateAuctionMilestones(nameInfo);
   milestones.push(...calculateLockupMilestones(nameInfo));
   milestones.push(...calculateRenewalMilestones(nameInfo));
+  milestones.push(...calculateTransferMilestones(nameInfo));
 
   // Leave only future ones
   return milestones.filter(el => el.blockHeight > currentBlockHeight);
@@ -206,6 +242,7 @@ module.exports = {
   calculateAuctionMilestones,
   calculateLockupMilestones,
   calculateRenewalMilestones,
+  calculateTransferMilestones,
   calculateAllFutureMilestones,
   calculateNameAvail
 };

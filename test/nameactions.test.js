@@ -2,12 +2,7 @@ const fs = require('fs');
 
 
 const {
-  ClaimNameAction,
-  OpenAuctionNameAction,
-  AuctionBidNameAction,
-  AuctionRevealNameAction,
-  RegisterNameAction,
-  RenewNameAction,
+  types: nameActionTypes,
   getNameActionFromTxout,
   getNameActionsFromBlock
 } = require('../nameactions');
@@ -33,10 +28,10 @@ test('extract values from CLAIM covenant', () => {
     }
   };
 
-  const action = ClaimNameAction.fromJSON(vout);
+  const action = getNameActionFromTxout(vout);
 
-  expect(action instanceof ClaimNameAction).toBeTruthy();
-  expect(action.value).toBe(2720503.385487);
+  expect(action.action).toBe('CLAIM');
+  expect(action.reservedAmount).toBe(2720503.385487);
   expect(action.name).toBe('namecheap');
   expect(action.nameHash)
       .toBe('7b504982ea98af85bad61fe98851dafe1b8ef5d0c3a0da7865839dd876220a0b')
@@ -64,8 +59,8 @@ test('extract action from OPEN covenant', () => {
     }
   };
 
-  const action = OpenAuctionNameAction.fromJSON(vout);
-  expect(action instanceof OpenAuctionNameAction).toBeTruthy();
+  const action = getNameActionFromTxout(vout);
+  expect(action.action).toBe('OPEN');
   expect(action.name).toBe('ocer');
   expect(action.nameHash)
       .toBe('952f1c3e3ed55ca92e16ccbe806ae59173b8c86a2c4119aab8673c43c3fa1a90');
@@ -92,8 +87,8 @@ test('extract action from BID covenant', () => {
     }
   };
 
-  const action = AuctionBidNameAction.fromJSON(vout);
-  expect(action instanceof AuctionBidNameAction).toBeTruthy();
+  const action = getNameActionFromTxout(vout);
+  expect(action.action).toBe('BID');
   expect(action.nameHash)
       .toBe('dddec8590b724da53d102b251978df3d242bb53994ea13217c793f070cd5172f');
   expect(action.name).toBe('moviebox');
@@ -122,8 +117,8 @@ test('extract action from REVEAL covenant', () => {
     }
   };
 
-  const action = AuctionRevealNameAction.fromJSON(vout);
-  expect(action instanceof AuctionRevealNameAction).toBeTruthy();
+  const action = getNameActionFromTxout(vout);
+  expect(action.action).toBe('REVEAL');
   expect(action.nameHash)
       .toBe('5fe8fb5e547d3959e28d6764324ee170743d8c39d664b91d37df1d4f4c65a171');
   expect(action.bidAmount).toBe(5.01);
@@ -151,8 +146,8 @@ test('extract action from REGISTER covenant', () => {
     }
   }
 
-  const action = RegisterNameAction.fromJSON(vout);
-  expect(action instanceof RegisterNameAction).toBeTruthy();
+  const action = getNameActionFromTxout(vout);
+  expect(action.action).toBe('REGISTER');
   expect(action.nameHash)
       .toBe('fdb4c543ea60246a8a647c82ab2c29f67c5d85293462f578b14138005e92983a');
   expect(action.burnedValue).toBe(58);
@@ -171,8 +166,8 @@ test('extract action from RENEW covenant', () => {
     }
   }
 
-  const action = RenewNameAction.fromJSON(vout);
-  expect(action instanceof RenewNameAction).toBeTruthy();
+  const action = getNameActionFromTxout(vout);
+  expect(action.action).toBe('RENEW');
   expect(action.nameHash)
       .toBe('fdb4c543ea60246a8a647c82ab2c29f67c5d85293462f578b14138005e92983a');
   expect(getNameActionFromTxout(vout)).toStrictEqual(action);
@@ -183,9 +178,6 @@ test('get name actions from block', () => {
   const block = JSON.parse(data);
   const nameActions = getNameActionsFromBlock(block);
   expect(nameActions.length).toBe(8);
-  expect(
-      nameActions.filter(el => el.constructor == AuctionBidNameAction).length)
-      .toBe(6);
-  expect(nameActions.filter(el => el.constructor == RegisterNameAction).length)
-      .toBe(2);
+  expect(nameActions.filter(a => a.action == 'BID').length).toBe(6);
+  expect(nameActions.filter(a => a.action == 'REGISTER').length).toBe(2);
 });

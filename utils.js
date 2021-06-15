@@ -20,7 +20,7 @@ function validateExtract(obj) {
     assert(Array.isArray(items));
     assert(items.length >= 1 && items.length <= 2);
 
-    const val = items[0];
+    let val = items[0];
     const opts = items[1] || {};
 
     // The gauntlet of checks
@@ -42,6 +42,10 @@ function validateExtract(obj) {
         throw new Error(`Element ${key} value "${val}" doesnt match expected "${
             opts.match}"`);
       }
+    }
+
+    if (opts.decode !== undefined) {
+      val = opts.decode(val);
     }
 
     out[key] = val;

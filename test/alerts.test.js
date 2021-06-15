@@ -121,7 +121,7 @@ test('update name alert triggers on new block', async () => {
 
   // Name auction has been opened
   currentBlockHeight = blockHeightAuctionOpen;
-  const nameActions = [new OpenAuctionNameAction(nameHash, name)];
+  const nameActions = [{action: 'OPEN', nameHash, name}];
 
   const nameInfos = {[name]: nameInfoOpening};
 
@@ -168,9 +168,9 @@ test('finds all firing name alerts based on name actions', async () => {
       chatId2, name2, currentBlockHeight, nameInfoEmpty);
 
   const nameActions = [
-    new OpenAuctionNameAction('hash1', name1),
-    new OpenAuctionNameAction('hash2', name2),
-    new OpenAuctionNameAction('hash3', name3),
+    {action: 'OPEN', nameHash: 'hash1', name: name1},
+    {action: 'OPEN', nameHash: 'hash2', name: name2},
+    {action: 'OPEN', nameHash: 'hash3', name: name3},
   ];
 
   const triggs = await findMatchingNameActionTriggers(nameActions);
@@ -238,8 +238,8 @@ test('fires all matching telegram name alerts', async () => {
 
   // Simulate getting a name action that matches our target name
   const nameActions = [
-    new AuctionBidNameAction('hash1', targetName, 10),
-    new OpenAuctionNameAction('hash1', 'blahblah', 10)
+    {action: 'BID', nameHash: 'hash1', name: targetName, lockupValue: 10},
+    {action: 'OPEN', nameHash: 'hash2', name: 'blahblah'}
   ];
 
   const emit = jest.fn((evt, arg) => true);

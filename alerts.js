@@ -4,12 +4,7 @@ const Op = sequelize.Op;
 const {calculateAllFutureMilestones} = require('./namestate');
 const {groupArrayBy, quietJsonParse} = require('./utils');
 const {emittedEvents: handshakeEvents} = require('./handshake');
-const {
-  ClaimNameAction,
-  OpenAuctionNameAction,
-  RegisterNameAction,
-  RenewNameAction
-} = require('./nameactions');
+const {types: nameActionTypes} = require('./nameactions');
 const {
   TelegramNameAlert,
   NameAlertBlockHeightTrigger,
@@ -113,15 +108,11 @@ async function updateNameAlertTriggersOnNewBlock(
   let nameActions = allNameActions.filter(na => relevantNames.has(na.name));
 
   // We only update triggers based on certain actions
-  const updateTriggeringActions = {
-    ClaimNameAction,
-    OpenAuctionNameAction,
-    RegisterNameAction,
-    RenewNameAction
-  };
+  const updateTriggeringActions =
+      new Set(['CLAIM', 'OPEN', 'REGISTER', 'TRANSFER', 'FINALIZE', 'REVOKE']);
 
   nameActions =
-      nameActions.filter(na => updateTriggeringActions[na.constructor.name]);
+      nameActions.filter(na => updateTriggeringActions.has(na.action));
 
   const affectedNames = nameActions.map(na => na.name);
 

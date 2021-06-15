@@ -5,6 +5,7 @@ const {
   calculateLockupMilestones,
   calculateRenewalMilestones,
   calculateAllFutureMilestones,
+  calculateTransferMilestones,
   calculateNameAvail
 } = require('../namestate');
 
@@ -144,6 +145,52 @@ test('all milestones after given block height', () => {
   expect(ms.length).toBe(1);
   const m = ms[0];
   expect(m.blockHeight).toBeGreaterThan(blockHeight);
+})
+
+test('milestones for a transferring name', () => {
+  const nameInfo = {
+    'start': {'reserved': true, 'week': 24, 'start': 26208},
+    'info': {
+      'name': 'newmessages',
+      'nameHash':
+          '81a8fc0f1d001528a5ec0eeb4bc97d62178ddae985d8699e2930939dd34cf490',
+      'state': 'CLOSED',
+      'height': 67610,
+      'renewal': 71975,
+      'owner': {
+        'hash':
+            'b04a20938377550896760abe4605171f83700f9f9101e86c1b02ae46c87bb7d1',
+        'index': 0
+      },
+      'value': 0,
+      'highest': 0,
+      'data': '00',
+      'transfer': 72136,
+      'revoked': 0,
+      'claimed': 1,
+      'renewals': 0,
+      'registered': true,
+      'expired': false,
+      'weak': true,
+      'stats': {
+        'renewalPeriodStart': 71975,
+        'renewalPeriodEnd': 177095,
+        'blocksUntilExpire': 104959,
+        'daysUntilExpire': 728.88,
+        'transferLockupStart': 72136,
+        'transferLockupEnd': 72424,
+        'blocksUntilValidFinalize': 288,
+        'hoursUntilValidFinalize': 48
+      }
+    }
+  };
+
+  const ms = calculateTransferMilestones(nameInfo);
+  const milestone = (nsm) => ms.find((el) => (el.nsMilestone == nsm));
+
+  expect(ms.length).toBe(2);
+  expect(milestone(nsMilestones.TRANSFER_IN_PROGRESS).blockHeight).toBe(72136);
+  expect(milestone(nsMilestones.TRANSFER_FINALIZING).blockHeight).toBe(72424);
 })
 
 test('namestate: reserved, unregistered', () => {
@@ -358,4 +405,46 @@ test('namestate: reserved, claimed, registered', () => {
   };
 
   expect(calculateNameAvail(nameInfo)).toBe(nameAvails.UNAVAIL_CLOSED);
+});
+
+
+test('name is being transferred', () => {
+  const nameInfo = {
+    'start': {'reserved': true, 'week': 24, 'start': 26208},
+    'info': {
+      'name': 'newmessages',
+      'nameHash':
+          '81a8fc0f1d001528a5ec0eeb4bc97d62178ddae985d8699e2930939dd34cf490',
+      'state': 'CLOSED',
+      'height': 67610,
+      'renewal': 71975,
+      'owner': {
+        'hash':
+            'b04a20938377550896760abe4605171f83700f9f9101e86c1b02ae46c87bb7d1',
+        'index': 0
+      },
+      'value': 0,
+      'highest': 0,
+      'data': '00',
+      'transfer': 72136,
+      'revoked': 0,
+      'claimed': 1,
+      'renewals': 0,
+      'registered': true,
+      'expired': false,
+      'weak': true,
+      'stats': {
+        'renewalPeriodStart': 71975,
+        'renewalPeriodEnd': 177095,
+        'blocksUntilExpire': 104959,
+        'daysUntilExpire': 728.88,
+        'transferLockupStart': 72136,
+        'transferLockupEnd': 72424,
+        'blocksUntilValidFinalize': 288,
+        'hoursUntilValidFinalize': 48
+      }
+    }
+  };
+
+  expect(calculateNameAvail(nameInfo)).toBe(nameAvails.UNAVAIL_TRANSFERRING);
 });

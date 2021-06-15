@@ -724,6 +724,9 @@ function formatNameStateDetailsMarkdown(nameState, nameInfo) {
           when} unless renewed by the owner before then\\.`;
     }
 
+    case nameAvails.UNAVAIL_TRANSFERRING:
+      return 'This name is being transferred from one address to another\\.';
+
     default:
       return `I'm not sure how to summarize the state of this name\\.\\.\\.
 Please click one of the links below to see the details\\.`;
@@ -768,6 +771,15 @@ function describeMilestone(milestone) {
       text += ' and changes can now be made to it\\.';
       break;
 
+    case nsMilestones.TRANSFER_IN_PROGRESS:
+      text += '*Transfer in progress*\\: The name is being transferred ';
+      text += 'to another address\\.'
+      break;
+
+    case nsMilestones.TRANSFER_FINALIZING:
+      text += '*Transfer finalizing*\\: The name transfer ';
+      text += 'is waiting to be finalized\\.'
+
     case nsMilestones.REGISTRATION_EXPIRED:
       text += '*Registration expired*\\: The name registration';
       text += ' has not been renewed in time';
@@ -791,28 +803,38 @@ function describeMilestone(milestone) {
  * @param {NameAction} nameAction
  */
 function describeNameAction(nameAction) {
-  switch (nameAction.constructor) {
-    case nacs.ClaimNameAction:
-      return '*Claim*\\: This name has been claimed\\!';
+  switch (nameAction.action) {
+    case 'CLAIM':
+      return '*Claim*\\: The name has been claimed\\.';
 
-    case nacs.OpenAuctionNameAction:
+    case 'OPEN':
       return '*Auction opened*\\: The name auction has been opened\\.';
 
-    case nacs.AuctionBidNameAction:
+    case 'BID':
       return `*Bid placed*\\: ${tgsafe('' + nameAction.lockupAmount)} HNS\\.`;
 
-    case nacs.AuctionRevealNameAction:
+    case 'REVEAL':
       return `*Bid revealed*\\: ${tgsafe('' + nameAction.bidAmount)} HNS\\.`;
 
-    case nacs.RegisterNameAction:
+    case 'REDEEM':
+      return '*Bid redeemed*\\: Bid has been redeemed\\.';
+
+    case 'REGISTER':
       return '*Registered*\\: The name has been registered\\.';
 
-    case nacs.RenewNameAction:
+    case 'RENEW':
       return '*Renewed*\\: The name has been renewed\\.';
 
-    case nacs.TransferNameAction:
+    case 'TRANSFER':
       return '*Transfer initiated*\\: A transfer of the name ' +
           'to a different address has been initiated\\.';
+
+    case 'FINALIZE':
+      return '*Transfer finalized*\\: A transfer of the name ' +
+          'to a different address has been finalized\\.';
+
+    case 'REVOKE':
+      return '*Name revoked*\\: The name has been revoked\\.'
 
     default:
       return '_Not sure how to describe this action\\. Please check the block explorer link below_\\.';
