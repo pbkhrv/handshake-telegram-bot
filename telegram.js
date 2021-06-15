@@ -398,7 +398,7 @@ class TelegramBot {
     text += `Total active name alerts\\: ${activeAlerts}\n`;
     text += 'Command counts\\:\n';
     for (let {command, count} of commandCounts) {
-      text += `\\- *${command}*\\: ${count}\n`;
+      text += `\\- *${tgsafe(command)}*\\: ${count}\n`;
     }
     this.sendMarkdown(chatId, text);
   }
