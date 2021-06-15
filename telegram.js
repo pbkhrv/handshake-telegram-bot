@@ -281,7 +281,7 @@ class TelegramBot {
    * @param {Object} cmd - command to be processed
    */
   async processNameCommand(chatId, cmd, fromShortcut = false) {
-    let name = cmd.args?.toLowerCase();
+    let name = cmd.args?.toLowerCase().replace('/', '');
     let statsExtra = fromShortcut ? 'sc' : '';
 
     // If command is incomplete, ask for more information
