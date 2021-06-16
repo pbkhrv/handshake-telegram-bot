@@ -723,20 +723,19 @@ function formatNameAlertMarkdown(
 
   // Name actions
   if (nameActions) {
-    text += 'New actions related to this name\\:\n';
+    text += 'New actions\\:\n';
     for (let nameAction of nameActions) {
       text += '\\- ';
       text += describeNameAction(nameAction);
       text += '\n';
     }
+    text += '\n';
   }
 
   // Footer
-  text += '\n';
-  text += '_Note: the information above';
-  text += ' is not guaranteed to be completely accurate\\._\n';
-  text += `_Please confirm with [block explorer](https://hnsnetwork.com/names/${
-      encodedName})\\._\n`;
+  text += `_Check the [block explorer](https://hnsnetwork.com/names/${
+      encodedName}) `;
+  text += 'for more information\\._';
 
   return text;
 }
@@ -745,7 +744,7 @@ function formatNameAlertMarkdown(
 /**
  * Make a human-readable summary of the state of this name
  *
- * TODO: look into using a templating library
+ * TODO: replace this code with milestones because redundant
  *
  * @param {int} nameState - state of the name
  * @param {Object} nameInfo - results of the getNameInfo RPC call
@@ -840,7 +839,7 @@ function describeMilestone(milestone) {
       break;
 
     case nsMilestones.AUCTION_REVEAL:
-      text += '*Auction reveal*\\: Bids are being revealed\\.';
+      text += '*Auction reveal*\\: Bids can now be revealed\\.';
       text += ' The auction will close in a few days\\.';
       break;
 
@@ -910,6 +909,9 @@ function describeNameAction(nameAction) {
 
     case 'RENEW':
       return '*Renewed*\\: The name has been renewed\\.';
+
+    case 'UPDATE':
+      return '*Updated*\\: Name records have been updated\\.';
 
     case 'TRANSFER':
       return '*Transfer initiated*\\: A transfer of the name ' +
