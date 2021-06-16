@@ -863,7 +863,8 @@ function describeMilestone(milestone) {
 
     case nsMilestones.TRANSFER_FINALIZING:
       text += '*Transfer finalizing*\\: The name transfer ';
-      text += 'is waiting to be finalized\\.'
+      text += 'is waiting to be finalized\\.';
+      break;
 
       case nsMilestones.REGISTRATION_EXPIRED: text +=
           '*Registration expired*\\: The name registration';
