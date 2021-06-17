@@ -395,7 +395,7 @@ class TelegramAlertManager extends EventEmitter {
   async processNewBlock(newBlockEvt) {
     // Update triggers as necessary
     await updateNameAlertTriggersOnNewBlock(
-        newBlockEvt.nameActions, newBlockEvt.blockHeightTriggers,
+        newBlockEvt.nameActions, newBlockEvt.blockHeight,
         async (name) => this.hnsQuery.getNameInfo(name));
 
     // Fire matching name alert triggers
