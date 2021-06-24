@@ -265,6 +265,13 @@ async function findMatchingBlockHeightTriggers(blockHeight) {
   return out;
 }
 
+
+/**
+ * Fire block height alerts that match this block height
+ *
+ * @param {number} blockHeight
+ * @param {Object} eventEmitter
+ */
 async function fireMatchingTelegramBlockHeightAlerts(
     blockHeight, eventEmitter) {
   // Find alerts that:
@@ -316,7 +323,7 @@ async function getTelegramNameAlert(chatId, encodedName) {
     return null;
   }
 
-  // Load triggers separately because
+  // Load triggers separately because sequalize.
   // i can't figure out syntax for eager loading with ordering while having
   // models under aliases
   // fml
@@ -328,6 +335,13 @@ async function getTelegramNameAlert(chatId, encodedName) {
   return {blockHeightTriggers: triggers};
 }
 
+
+/**
+ * Get all block height alerts set for this chat
+ *
+ * @param {number} chatId
+ * @returns {Object[]}
+ */
 async function getTelegramBlockHeightAlerts(chatId) {
   const alerts = await TelegramBlockHeightAlert.findAll(
       {where: {chatId, didFire: false}, order: [['blockHeight', 'ASC']]});
@@ -414,6 +428,7 @@ class TelegramAlertManager extends EventEmitter {
         handshakeEvents.NEW_BLOCK, async (evt) => this.processNewBlock(evt));
   }
 }
+
 
 module.exports = {
   emittedEvents,

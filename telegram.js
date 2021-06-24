@@ -14,6 +14,7 @@ const {
 } = require('./utils');
 const stats = require('./stats');
 
+
 const emojis = {
   deleted: '🗑',
   alert: '🚨',
@@ -21,10 +22,14 @@ const emojis = {
   frown: '🙁'
 };
 
-
-const blockHeightAlerts = {
+const alertTypes = {
   BLOCK_MINED: 'BLOCK_MINED'
 };
+
+const emptyInlineKeyboard = {
+  inline_keyboard: []
+};
+
 
 /*
  * Handle all interactions with Telegram
@@ -38,21 +43,9 @@ class TelegramBot {
    * @param {TelegramAlertManager} alertManager
    */
   constructor(botToken, hnsQuery, alertManager) {
-    /**
-     * @type {Slimbot}
-     */
     this.slimbot = new Slimbot(botToken);
-
-    /**
-     * @type {HandshakeQuery}
-     */
     this.hnsQuery = hnsQuery;
-
-    /**
-     * @type {TelegramAlertManager}
-     */
     this.alertManager = alertManager;
-
     this.incompleteCommands = {};
   }
 
@@ -134,24 +127,28 @@ class TelegramBot {
     }
   }
 
+  /**
+   * Process callback query from an inline keyboard
+   *
+   * @param {Object} query
+   * @returns
+   */
   async onCallbackQuery(query) {
     if (!query) {
-      console.log('Got empty callback_query, exiting');
+      console.error('Got empty callback_query, exiting');
       return;
     }
 
-    console.log('RECEIVED CALLBACK QUERY', query);
-
     const queryId = query.id;
     if (!queryId) {
-      console.log('Got empty query id in callback_query, exiting');
+      console.error('Got empty query id in callback_query, exiting');
       return;
     }
 
     // TODO: refactor, this is badwrong
     const data = query.data;
     if (!data) {
-      console.log('cbQuery: data is empty');
+      console.error('cbQuery: data is empty');
       await this.slimbot.answerCallbackQuery(
           queryId, {text: 'Something went wrong...'});
       return;
@@ -187,8 +184,7 @@ class TelegramBot {
             queryId, {text: 'Alert created'});
         if (message?.message_id) {
           await this.slimbot.editMessageReplyMarkup(
-              chatId, message.message_id,
-              JSON.stringify(emptyInlineKeyboard()));
+              chatId, message.message_id, JSON.stringify(emptyInlineKeyboard));
         }
         await this.sendNameAlertDetails(chatId, encodedName);
         break;
@@ -212,8 +208,7 @@ class TelegramBot {
         // Remove inline keyboard, because we'll start a new interaction
         if (message?.message_id) {
           await this.slimbot.editMessageReplyMarkup(
-              chatId, message.message_id,
-              JSON.stringify(emptyInlineKeyboard()));
+              chatId, message.message_id, JSON.stringify(emptyInlineKeyboard));
         }
 
         await this.sendMarkdown(
@@ -323,7 +318,8 @@ class TelegramBot {
       if (e instanceof InvalidNameError) {
         // Notify user if name is invalid
         await this.slimbot.sendMessage(
-            chatId, `I'm sorry, but "${name}" is not a valid Handshake name`);
+            chatId,
+            `I'm sorry, but "${name}" is not a valid Handshake name`);
         return;
       } else {
         // Some general error - make this better
@@ -335,8 +331,10 @@ class TelegramBot {
     }
   }
 
+
   /**
    * Format and deliver the name alert
+   *
    * @param {TelegramNameAlertTriggerEvent} evt
    */
   async deliverNameAlert(
@@ -349,6 +347,7 @@ class TelegramBot {
 
 
   /**
+   * Process /nextblock command or shortcut
    *
    * @param {number} chatId
    * @param {string} inputTargetBlockHeight user input target block height
@@ -381,7 +380,7 @@ class TelegramBot {
     const dontCreateDuplicates = true;
 
     await this.alertManager.createTelegramBlockHeightAlert(
-        chatId, targetBlockHeight, blockHeightAlerts.BLOCK_MINED,
+        chatId, targetBlockHeight, alertTypes.BLOCK_MINED,
         inputTargetBlockHeight, dontCreateDuplicates);
 
     const secondsSinceMined = await this.getCurrentBlockTiming();
@@ -391,10 +390,16 @@ class TelegramBot {
     await this.slimbot.sendMessage(chatId, text, {
       parse_mode: 'MarkdownV2',
       reply_markup: JSON.stringify(cancelBlockHeightAlertInlineKeyboard(
-          targetBlockHeight, blockHeightAlerts.BLOCK_MINED))
+          targetBlockHeight, alertTypes.BLOCK_MINED))
     });
   }
 
+
+  /**
+   * Process /stats command
+   *
+   * @param {number} chatId
+   */
   async processStatsCommand(chatId) {
     const uniqChats = await stats.uniqueChats();
     const commandCounts = await stats.commandCounts();
@@ -408,15 +413,21 @@ class TelegramBot {
     this.sendMarkdown(chatId, text);
   }
 
+
+  /**
+   * Try to guess a command shortcut
+   *
+   * @param {number} chatId
+   * @param {string} input
+   */
   async processDefaultCommand(chatId, input) {
-    // Is this a "+COUNT" nextblock shortcut?
+    // Is this a "+COUNT" or "#HEIGHT" nextblock shortcut?
     const nextblock = parsePositiveInt(input) || parseBlockNum(input);
     if (nextblock) {
       await this.processNextBlockCommand(chatId, input, true);
-      return;
+    } else {
+      await this.processNameCommand(chatId, {args: input});
     }
-
-    await this.processNameCommand(chatId, {args: input});
   }
 
 
@@ -442,7 +453,7 @@ class TelegramBot {
     }
 
     // Summarize name alerts
-    let text = 'Your alerts\\:\n\n';
+    let text = '';
     if (nameAlertNames.length > 0) {
       text += 'I am watching the following *names* for you\\:\n';
       text += summarizeNameAlertNames(nameAlertNames);
@@ -466,6 +477,12 @@ class TelegramBot {
   }
 
 
+  /**
+   * Calculate how long ago current block was mined
+   * TODO: doesnt belong here, move to handshake.js
+   *
+   * @returns {number}
+   */
   async getCurrentBlockTiming() {
     const bcInfo = await this.hnsQuery.getBlockchainInfo();
     const blockHeight = bcInfo.blocks;
@@ -477,8 +494,13 @@ class TelegramBot {
   }
 
 
+  /**
+   * Format and deliver block height alert to chat
+   *
+   * @param {Object} param0
+   */
   async deliverBlockHeightAlert({chatId, blockHeight, alertType, context}) {
-    if (alertType == blockHeightAlerts.BLOCK_MINED) {
+    if (alertType == alertTypes.BLOCK_MINED) {
       let text = `${emojis.alert} Alert\\: block `;
       text +=
           `*[${blockHeight}](https://hnsnetwork.com/blocks/${blockHeight})*`;
@@ -490,15 +512,6 @@ class TelegramBot {
     }
   }
 
-  async testInline(chatId) {
-    const inlineKeyboard = {
-      inline_keyboard: [[{text: 'do it again', callback_data: '/test'}]]
-    };
-    await this.slimbot.sendMessage(chatId, '*test* inline keyb', {
-      parse_mode: 'MarkdownV2',
-      reply_markup: JSON.stringify(inlineKeyboard)
-    });
-  }
 
   /**
    * Greet the user with a help message
@@ -506,7 +519,6 @@ class TelegramBot {
    * @param {string} chatId - telegram chat id to respond to
    */
   async sendGreeting(chatId) {
-    const params = {parse_mode: 'MarkdownV2', disable_web_page_preview: true};
     const text = `*Hello there\\!*
 I am a Handshake \\(HNS\\) bot\\. [Handshake](https://handshake.org) is an experimental peer\\-to\\-peer root naming system that allows you to register and manage top\\-level domain names on a blockchain, and transact in its native cryptocurrency\\.
 
@@ -529,7 +541,7 @@ Please note: _I handle emojis and unicode automatically\\: you don\\'t have to d
 
 _This bot is a proof\\-of\\-concept work in progress\\._ Feedback\\? Feature requests\\? Complaints\\? [Would love to hear from you\\!](https://t.me/allmyhinges)`;
 
-    await this.slimbot.sendMessage(chatId, text, params);
+    await this.sendMarkdown(chatId, text);
   }
 
   /**
@@ -544,6 +556,14 @@ _This bot is a proof\\-of\\-concept work in progress\\._ Feedback\\? Feature req
 Please use /help to see the list of commands that I recognize.`);
   }
 
+
+  /**
+   * Send markdown-formatted message to chat
+   *
+   * @param {number} chatId
+   * @param {string} md
+   * @param {Object|null} inlineKeyboard
+   */
   async sendMarkdown(chatId, md, inlineKeyboard = null) {
     const params = {parse_mode: 'MarkdownV2', disable_web_page_preview: true};
     if (inlineKeyboard) {
@@ -552,6 +572,13 @@ Please use /help to see the list of commands that I recognize.`);
     await this.slimbot.sendMessage(chatId, md, params);
   }
 
+
+  /**
+   * Format and send details about Handshake name to chat
+   *
+   * @param {number} chatId
+   * @param {string} name
+   */
   async sendNameAlertDetails(chatId, name) {
     const encodedName = encodeName(name);
     const alert =
@@ -595,12 +622,13 @@ Please use /help to see the list of commands that I recognize.`);
 }
 
 
-function units(unit, i) {
-  i = Math.floor(i);
-  return i == 1 ? `1 ${unit}` : `${i} ${unit}s`;
-}
-
-
+/**
+ * Inline keyboard object for alert detail message
+ *
+ * @param {string} encodedName
+ * @param {boolean} existsAlert
+ * @returns {Object}
+ */
 function nameAlertInlineKeyboard(encodedName, existsAlert) {
   let button = null;
   if (existsAlert) {
@@ -612,6 +640,13 @@ function nameAlertInlineKeyboard(encodedName, existsAlert) {
 }
 
 
+/**
+ * Inline keyboard object for block height alert message
+ *
+ * @param {number} blockHeight
+ * @param {string} alertType
+ * @returns {Object}
+ */
 function cancelBlockHeightAlertInlineKeyboard(blockHeight, alertType) {
   const button = {
     text: 'Cancel alert',
@@ -620,10 +655,6 @@ function cancelBlockHeightAlertInlineKeyboard(blockHeight, alertType) {
   return {inline_keyboard: [[button]]};
 }
 
-
-function emptyInlineKeyboard() {
-  return {inline_keyboard: []};
-}
 
 
 /**
@@ -669,6 +700,16 @@ function tgsafe(text) {
   return text.replace(specialCharsRegex, '\\$&');
 }
 
+
+/**
+ * Format Handshake name information markdown text
+ *
+ * @param {string} name
+ * @param {string} encodedName
+ * @param {number} nameState
+ * @param {Object} nameInfo
+ * @returns {string}
+ */
 function formatNameInfoMarkdown(name, encodedName, nameState, nameInfo) {
   // Header
   let text = `Name: *${tgsafe(name)}*\n`;
@@ -767,11 +808,11 @@ function formatNameStateDetailsMarkdown(nameState, nameInfo) {
     case nameAvails.AUCTION_OPENING: {
       const hrs = nameInfo.info.stats?.hoursUntilBidding || 0;
       const when =
-          Math.floor(hrs) > 0 ? `in about ${units('hour', hrs)}` : 'soon';
+          Math.floor(hrs) > 0 ? `in about ${numUnits('hour', hrs)}` : 'soon';
       const blocksLeft = nameInfo.info.stats?.blocksUntilBidding;
       let text = `The *auction* for this name has just been opened\\.\n`;
       text += `Bidding will begin ${when} `;
-      text += `\\(${units('block', blocksLeft)} left\\)\\.`;
+      text += `\\(${numUnits('block', blocksLeft)} left\\)\\.`;
 
       return text;
     }
@@ -779,30 +820,30 @@ function formatNameStateDetailsMarkdown(nameState, nameInfo) {
     case nameAvails.AUCTION_BIDDING: {
       const hrs = nameInfo.info.stats?.hoursUntilReveal || 0;
       const when =
-          Math.floor(hrs) > 0 ? `in about ${units('hour', hrs)}` : 'soon';
+          Math.floor(hrs) > 0 ? `in about ${numUnits('hour', hrs)}` : 'soon';
       const blocksLeft = nameInfo.info.stats?.blocksUntilReveal;
       let text = `This name is *in auction*\\: `;
       text += `Bids are being accepted right now\\.\n`;
       text += `Bidding will end ${when} `;
-      text += `\\(${units('block', blocksLeft)} left\\)\\.`;
+      text += `\\(${numUnits('block', blocksLeft)} left\\)\\.`;
       return text;
     }
 
     case nameAvails.AUCTION_REVEAL: {
       const hrs = nameInfo.info.stats?.hoursUntilClose || 0;
       const when =
-          Math.floor(hrs) > 0 ? `in about ${units('hour', hrs)}` : 'soon';
+          Math.floor(hrs) > 0 ? `in about ${numUnits('hour', hrs)}` : 'soon';
       const blocksLeft = nameInfo.info.stats?.blocksUntilClose;
       let text = `This name is *in auction*\\: `;
       text += `Bids are being revealed right now\\.\n`;
       text += `Auction will close ${when} `;
-      text += `\\(${units('block', blocksLeft)} left\\)\\.`;
+      text += `\\(${numUnits('block', blocksLeft)} left\\)\\.`;
       return text;
     }
 
     case nameAvails.UNAVAIL_CLOSED: {
       let ds = nameInfo.info.stats?.daysUntilExpire || 0;
-      let when = Math.floor(ds) > 0 ? `in about ${units('day', ds)}` :
+      let when = Math.floor(ds) > 0 ? `in about ${numUnits('day', ds)}` :
                                       'in less than a day';
       return `This name is taken\\. It will expire ${
           when} unless renewed by the owner before then\\.`;
@@ -866,8 +907,8 @@ function describeMilestone(milestone) {
       text += 'is waiting to be finalized\\.';
       break;
 
-      case nsMilestones.REGISTRATION_EXPIRED: text +=
-          '*Registration expired*\\: The name registration';
+    case nsMilestones.REGISTRATION_EXPIRED:
+      text += '*Registration expired*\\: The name registration';
       text += ' has not been renewed in time';
       text += ' and it is available for a new auction\\.';
       break;
@@ -885,6 +926,7 @@ function describeMilestone(milestone) {
 
 
 /**
+ * Describe a name action
  *
  * @param {NameAction} nameAction
  */
@@ -923,19 +965,27 @@ function describeNameAction(nameAction) {
           'to a different address has been finalized\\.';
 
     case 'REVOKE':
-      return '*Name revoked*\\: The name has been revoked\\.'
+      return '*Name revoked*\\: The name has been revoked\\.';
 
-          default:
-              return '_Not sure how to describe this action\\. Please check the block explorer link below_\\.';
+    default:
+      return '_Not sure how to describe this action\\. Please check the block explorer link below_\\.';
   }
 }
 
 
+/**
+ * Format block mined alert confirmation message
+ *
+ * @param {number} blockHeight
+ * @param {number} secondsSinceMined
+ * @param {number} targetBlockHeight
+ * @returns {string}
+ */
 function formatBlockMinedAlertMarkdown(
     blockHeight, secondsSinceMined, targetBlockHeight) {
   const mins = Math.floor(secondsSinceMined / 60);
-  const time =
-      mins > 0 ? units('minute', mins) : units('second', secondsSinceMined);
+  const time = mins > 0 ? numUnits('minute', mins) :
+                          numUnits('second', secondsSinceMined);
 
   let text = 'Current block height is ';
   text +=
@@ -950,6 +1000,11 @@ function formatBlockMinedAlertMarkdown(
 }
 
 
+/**
+ * Format help message about alerts
+ *
+ * @returns {string}
+ */
 function formatAlertsHelpMarkdown() {
   let text = '';
   text += `*Name alerts*\nI can watch a Handshake name and alert you `;
@@ -970,6 +1025,12 @@ function formatAlertsHelpMarkdown() {
 }
 
 
+/**
+ * Format list of Handshake names
+ *
+ * @param {string[]} encodedNames
+ * @returns
+ */
 function summarizeNameAlertNames(encodedNames) {
   let text = '';
   for (let en of encodedNames) {
@@ -982,17 +1043,22 @@ function summarizeNameAlertNames(encodedNames) {
 }
 
 
+/**
+ * Format list of block height alerts
+ *
+ * @param {Object[]} alerts
+ * @returns
+ */
 function summarizeBlockHeightAlerts(alerts) {
   let text = '';
   for (let alert of alerts) {
-    // TODO: handle different alertType's
+    // TODO: handle different alertTypes
     text += `\\- *${alert.blockHeight}\\:* Block mined alert\n`;
   }
   return text;
 }
 
 
-// Export all the things.
 module.exports = {
   parseCommandMessage,
   TelegramBot

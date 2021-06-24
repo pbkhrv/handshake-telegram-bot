@@ -1,5 +1,5 @@
-const {validateExtract} = require('./utils');
 const {util, Rules} = require('hsd');
+const {validateExtract} = require('./utils');
 
 
 const types = Rules.types;
@@ -125,6 +125,7 @@ function getNameActionFromTxout(vout) {
   return null;
 }
 
+
 /**
  * Extract name actions contained in the transactions in this block
  * @param {Object} block getblock RPC call result
@@ -147,6 +148,7 @@ function getNameActionsFromBlock(block) {
 
   return nameActions;
 }
+
 
 module.exports = {
   types,

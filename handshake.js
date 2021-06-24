@@ -86,7 +86,7 @@ class HandshakeQuery extends EventEmitter {
     this.emit(emittedEvents.NEW_BLOCK, {
       /**
        * @property {Object} bcInfo result of getblockchaininfo RPC call
-       * @property {NameAction[]} nameActions
+       * @property {Object[]} nameActions
        * @property {number} blockHeight
        */
       bcInfo,
@@ -142,6 +142,11 @@ class HandshakeQuery extends EventEmitter {
     return await this.hsdClient.execute('getnamebyhash', [nameHash]);
   }
 
+  /**
+   * Last block height that we are aware of
+   *
+   * @returns {number}
+   */
   getCurrentBlockHeight() {
     return this.lastSeenBlockHeight;
   }
@@ -170,12 +175,23 @@ function decodeName(encodedName) {
 }
 
 
+/**
+ * Last block height that we have processed and recorded
+ *
+ * @returns {number}
+ */
 async function getLastProcessedBlockHeight() {
   const maxBlockHeight = await ProcessedBlock.max('blockHeight');
   return maxBlockHeight || 0;
 }
 
 
+/**
+ * Record last processed block height and hash
+ *
+ * @param {number} blockHeight
+ * @param {string} blockHash
+ */
 async function recordLastProcessedBlock(blockHeight, blockHash) {
   await ProcessedBlock.create({blockHeight, blockHash});
 }

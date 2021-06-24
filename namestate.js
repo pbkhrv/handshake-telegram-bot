@@ -206,6 +206,12 @@ function calculateRenewalMilestones(nameInfo) {
 }
 
 
+/**
+ * Calculate transfer-related milestones
+ * 
+ * @param {Object} nameInfo 
+ * @returns {Object[]}
+ */
 function calculateTransferMilestones(nameInfo) {
   const info = nameInfo.info;
   const state = info?.state;
@@ -246,6 +252,7 @@ function calculateAllFutureMilestones(nameInfo, currentBlockHeight) {
   // Leave only future ones
   return milestones.filter(el => el.blockHeight > currentBlockHeight);
 }
+
 
 module.exports = {
   nsMilestones,
