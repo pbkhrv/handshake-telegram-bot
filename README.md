@@ -29,7 +29,7 @@ npm run test
 
 ### Configure the bot
 
-Currently, the bot can only be configured by setting environment variables (command line options are #10 on the todo list).
+Currently, the bot can only be configured by setting environment variables (command line options are [on the todo list](https://github.com/pbkhrv/handshake-telegram-bot/issues/10)).
 
 You *must* set the following environment variables before running it:
 - `TELEGRAM_BOT_API_KEY`: this is the API key that you get from Telegram's BotFather [when you create your bot](https://core.telegram.org/bots#3-how-do-i-create-a-bot)
