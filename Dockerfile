@@ -6,4 +6,4 @@ COPY ["package.json", "package-lock.json*", "npm-shrinkwrap.json*", "./"]
 RUN npm install --production
 RUN mv node_modules ../
 COPY . .
-CMD ["node", "app.js"]
+CMD ["node", "src/app.js"]
