@@ -1,4 +1,5 @@
-const {validateExtract, parsePositiveInt, parseBlockNum} = require('../utils');
+const {validateExtract, parsePositiveInt, parseBlockNum} =
+    require('../src/utils');
 
 test('validateExtract works with simple stuff', () => {
   const obj = {sss: 'asdf', nummm: 12, ign: 'qwe', obbb: {k: 'v'}};

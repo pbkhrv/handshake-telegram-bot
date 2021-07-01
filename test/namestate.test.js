@@ -7,7 +7,7 @@ const {
   calculateAllFutureMilestones,
   calculateTransferMilestones,
   calculateNameAvail
-} = require('../namestate');
+} = require('../src/namestate');
 
 
 /* Fixtures */

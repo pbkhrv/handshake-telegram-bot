@@ -1,5 +1,5 @@
-const stats = require('../stats');
-const db = require('../db');
+const db = require('../src/db');
+const stats = require('../src/stats');
 
 async function reinitDb() {
   await db.init('sqlite::memory:', {isQuietReinit: true});

@@ -1,4 +1,4 @@
-const db = require('../db');
+const db = require('../src/db');
 const {
   createTelegramNameAlert,
   updateNameAlertTriggersOnNewBlock,
@@ -8,9 +8,11 @@ const {
   emittedEvents,
   createTelegramBlockHeightAlert,
   fireMatchingTelegramBlockHeightAlerts
-} = require('../alerts');
-const {calculateAllFutureMilestones, nsMilestones} = require('../namestate');
-const {OpenAuctionNameAction, AuctionBidNameAction} = require('../nameactions');
+} = require('../src/alerts');
+const {calculateAllFutureMilestones, nsMilestones} =
+    require('../src/namestate');
+const {OpenAuctionNameAction, AuctionBidNameAction} =
+    require('../src/nameactions');
 
 const blockHeightAuctionOpen = 62517;
 

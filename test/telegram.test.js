@@ -1,5 +1,5 @@
 const {parseCommandMessage, nameStateDetailsMarkdown, TelegramBot} =
-    require('../telegram');
+    require('../src/telegram');
 
 const testMessage = {
   message_id: 36,

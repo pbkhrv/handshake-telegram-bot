@@ -1,11 +1,11 @@
 const fs = require('fs');
 
-
 const {
   types: nameActionTypes,
   getNameActionFromTxout,
   getNameActionsFromBlock
-} = require('../nameactions');
+} = require('../src/nameactions');
+
 
 test('extract values from CLAIM covenant', () => {
   const vout = {
