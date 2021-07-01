@@ -1,12 +1,12 @@
 {
-  "name": "patrol-poc",
+  "name": "handshake-telegram-bot",
   "version": "1.0.0",
-  "description": "handshake-patrol proof of concept",
-  "main": "app.js",
+  "description": "Telegram bot that answers queries about the Handshake blockchain",
+  "main": "src/app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest"
   },
-  "author": "",
+  "author": "Peter B <pbkhrv@pm.me>",
   "license": "ISC",
   "dependencies": {
     "bsock": "^0.1.9",
@@ -14,12 +14,12 @@
     "hs-client": "0.0.9",
     "hsd": "^2.4.0",
     "punycode": "^2.1.1",
-    "sequelize": "^6.6.2",
+    "sequelize": "^6.6.4",
     "slimbot": "^5.1.0",
     "sqlite3": "^5.0.2"
   },
   "devDependencies": {
-    "jest": "^27.0.1",
-    "clang-format": "^1.5.0"
+    "clang-format": "^1.5.0",
+    "jest": "^27.0.6"
   }
 }
