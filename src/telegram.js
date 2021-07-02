@@ -625,6 +625,7 @@ Please use /help to see the list of commands that I recognize.`);
         }
         md.append(
             `: ${milestone} (block `, tgmd.code('#', trigger.blockHeight), ')');
+        md.appendLine();
       }
     } else {
       md.appendLine();
