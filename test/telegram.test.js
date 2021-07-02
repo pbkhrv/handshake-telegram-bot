@@ -1,5 +1,19 @@
-const {parseCommandMessage, nameStateDetailsMarkdown, TelegramBot} =
-    require('../src/telegram');
+const {
+  parseCommandMessage,
+  nameStateDetailsMarkdown,
+  TelegramBot,
+  formatNameAlertMarkdown,
+  formatNameInfoMarkdown,
+  formatNameStateDetailsMarkdown,
+  formatMilestoneMarkdown,
+  formatBlockMinedAlertMarkdown
+} = require('../src/telegram');
+const {getNameActionFromTxout} = require('../src/nameactions');
+const {nsMilestones, calculateAuctionMilestones, calculateNameAvail} =
+    require('../src/namestate');
+const {encodeName} = require('../src/handshake');
+const {nameInfos, txoutBid} = require('./fixtures');
+
 
 const testMessage = {
   message_id: 36,
@@ -82,4 +96,44 @@ test('Replaces previous command with new one', () => {
   const newCmd = {command: '/yada', args: 'yada'};
 
   expect(bot.buildCurrentCommand(chatId, newCmd)).toBe(newCmd);
+});
+
+test('name alert markdown works', () => {
+  const ms = calculateAuctionMilestones(nameInfos.opening);
+  const m = ms.find((el) => (el.nsMilestone == nsMilestones.AUCTION_BIDDING));
+  const trig = {nsMilestone: m.nsMilestone};
+  const action = getNameActionFromTxout(txoutBid);
+  formatNameAlertMarkdown('xn--5p9h', [trig], [action]).toString();
+  // at least it didn't throw up
+});
+
+test('name info markdown works', () => {
+  const name = '🤝';
+  const nameState = calculateNameAvail(nameInfos.opening);
+  formatNameInfoMarkdown(name, encodeName(name), nameState, nameInfos.opening)
+      .toString();
+  // at least it didn't throw up
+});
+
+test('name state detail markdown works for all cases', () => {
+  for (let [_, nameInfo] of Object.entries(nameInfos)) {
+    const nameState = calculateNameAvail(nameInfo);
+    formatNameStateDetailsMarkdown(nameState, nameInfo).toString();
+    // at least it didn't throw up
+  }
+});
+
+test('milestone markdown works for all cases', () => {
+  for (let [_, nameInfo] of Object.entries(nameInfos)) {
+    for (let ms of calculateAuctionMilestones(nameInfo)) {
+      formatMilestoneMarkdown(ms).toString();
+    }
+  }
+});
+
+test('block mined alert markdown works', () => {
+  formatBlockMinedAlertMarkdown(1234, 0, 1235).toString();
+  formatBlockMinedAlertMarkdown(1234, 10, 1235).toString();
+  formatBlockMinedAlertMarkdown(1234, 100, 1235).toString();
+  // at least it didn't throw up
 });

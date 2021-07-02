@@ -172,6 +172,94 @@ function cleanHandshakeName(rawName) {
 }
 
 
+/**
+ * Helps format Telegram-safe markdown strings
+ */
+class TelegramMarkdown {
+  static specialCharsRegex = /[_\*\[\]\(\)\~\`\>\#\+\-\=\|\{\}\.\!]/gi;
+
+  /**
+   * Helper class that prevents pre-formatted strings from being formatted again
+   */
+  static EscapedString = class {
+    constructor(str) {
+      this.str = str;
+    }
+
+    toString() {
+      return this.str;
+    }
+  };
+
+  constructor(...chunks) {
+    this.chunks = chunks;
+  }
+
+  /**
+   * Append chunk(s) to this markdown object
+   *
+   * @param {...any} chunks
+   */
+  append(...chunks) {
+    this.chunks = this.chunks.concat(chunks);
+  }
+
+  /**
+   * Append chunk(s) and line break to this object
+   *
+   * @param  {...any} chunks
+   */
+  appendLine(...chunks) {
+    this.append(...chunks);
+    this.append('\n');
+  }
+
+  /**
+   * Format object as string
+   *
+   * @returns {string}
+   */
+  toString() {
+    return this.chunks.reduce(
+        (acc, c) => acc += TelegramMarkdown.escape(c), '');
+  }
+
+  /**
+   * Format arg as string and escape
+   *
+   * @param {*} chunk
+   * @returns {string}
+   */
+  static escape(chunk) {
+    if (typeof chunk === 'string' || chunk instanceof String) {
+      return chunk.replace(TelegramMarkdown.specialCharsRegex, '\\$&');
+    } else if (typeof chunk === 'number') {
+      return TelegramMarkdown.escape(new String(chunk));
+    } else {
+      return chunk.toString();
+    }
+  }
+
+  static link(anchor, href) {
+    return new TelegramMarkdown.EscapedString(
+        `[${TelegramMarkdown.escape(anchor)}](${href})`);
+  }
+
+  static raw(text) {
+    return new TelegramMarkdown.EscapedString(text);
+  }
+
+  static _surrounder(openClose) {
+    const m = TelegramMarkdown.raw(openClose);
+    return (...chunks) => new TelegramMarkdown(m, ...chunks, m);
+  }
+
+  static bold = TelegramMarkdown._surrounder('*');
+  static italic = TelegramMarkdown._surrounder('_');
+  static code = TelegramMarkdown._surrounder('`');
+}
+
+
 module.exports = {
   validateExtract,
   groupArrayBy,
@@ -180,5 +268,6 @@ module.exports = {
   parseBlockNum,
   numUnits,
   blocksToApproxDaysOrHours,
-  cleanHandshakeName
+  cleanHandshakeName,
+  TelegramMarkdown
 };

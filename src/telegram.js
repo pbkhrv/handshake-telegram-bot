@@ -10,7 +10,8 @@ const {
   parseBlockNum,
   blocksToApproxDaysOrHours,
   numUnits,
-  cleanHandshakeName
+  cleanHandshakeName,
+  TelegramMarkdown: tgmd
 } = require('./utils');
 const stats = require('./stats');
 
@@ -212,7 +213,8 @@ class TelegramBot {
         }
 
         await this.sendMarkdown(
-            chatId, `${emojis.deleted} Deleted alert for *${tgsafe(name)}*`);
+            chatId,
+            new tgmd(emojis.deleted, ' Deleted alert for ', tgmd.bold(name)));
         break;
       }
 
@@ -234,8 +236,9 @@ class TelegramBot {
         if (this.hnsQuery.getCurrentBlockHeight() < blockHeight) {
           await this.sendMarkdown(
               chatId,
-              `${emojis.deleted} Deleted alert for block height \`\\#${
-                  blockHeight}\`\\.`);
+              new tgmd(
+                  emojis.deleted, ' Deleted alert for block height ',
+                  tgmd.code(`#${blockHeight}`), '.'));
         }
         break;
       }
@@ -303,23 +306,22 @@ class TelegramBot {
       const alertExists =
           await this.alertManager.checkExistsNameAlert(chatId, encodedName);
 
-      const text =
-          formatNameInfoMarkdown(name, encodedName, nameState, nameInfo);
+      const md = formatNameInfoMarkdown(name, encodedName, nameState, nameInfo);
 
       // Let user create an alert if one doesn't exist
       if (!alertExists) {
         await this.sendMarkdown(
-            chatId, text, nameAlertInlineKeyboard(encodedName, false));
+            chatId, md, nameAlertInlineKeyboard(encodedName, false));
       } else {
-        await this.sendMarkdown(chatId, text);
+        await this.sendMarkdown(chatId, md);
         await this.sendNameAlertDetails(chatId, name);
       }
     } catch (e) {
       if (e instanceof InvalidNameError) {
         // Notify user if name is invalid
-        await this.slimbot.sendMessage(
+        await this.sendMarkdown(
             chatId,
-            `I'm sorry, but "${name}" is not a valid Handshake name`);
+            new tgmd(`I'm sorry, but "${name}" is not a valid Handshake name`));
         return;
       } else {
         // Some general error - make this better
@@ -339,10 +341,10 @@ class TelegramBot {
    */
   async deliverNameAlert(
       {chatId, encodedName, blockHeightTriggers, nameActions}) {
-    const text =
+    const md =
         formatNameAlertMarkdown(encodedName, blockHeightTriggers, nameActions);
     await this.sendMarkdown(
-        chatId, text, nameAlertInlineKeyboard(encodedName, true));
+        chatId, md, nameAlertInlineKeyboard(encodedName, true));
   }
 
 
@@ -384,14 +386,13 @@ class TelegramBot {
         inputTargetBlockHeight, dontCreateDuplicates);
 
     const secondsSinceMined = await this.getCurrentBlockTiming();
-    const text = formatBlockMinedAlertMarkdown(
+    const md = formatBlockMinedAlertMarkdown(
         blockHeight, secondsSinceMined, targetBlockHeight);
 
-    await this.slimbot.sendMessage(chatId, text, {
-      parse_mode: 'MarkdownV2',
-      reply_markup: JSON.stringify(cancelBlockHeightAlertInlineKeyboard(
-          targetBlockHeight, alertTypes.BLOCK_MINED))
-    });
+    await this.sendMarkdown(
+        chatId, md,
+        cancelBlockHeightAlertInlineKeyboard(
+            targetBlockHeight, alertTypes.BLOCK_MINED));
   }
 
 
@@ -404,13 +405,15 @@ class TelegramBot {
     const uniqChats = await stats.uniqueChats();
     const commandCounts = await stats.commandCounts();
     const activeAlerts = await stats.activeNameAlerts();
-    let text = `Unique chats\\: ${uniqChats}\n`;
-    text += `Total active name alerts\\: ${activeAlerts}\n`;
-    text += 'Command counts\\:\n';
+
+    const md = new tgmd();
+    md.appendLine('Unique chats: ', uniqChats);
+    md.appendLine('Total active name alerts: ', activeAlerts);
+    md.appendLine('Command counts:');
     for (let {command, count} of commandCounts) {
-      text += `\\- *${tgsafe(command)}*\\: ${count}\n`;
+      md.appendLine('- ', tgmd.bold(command), ': ', count);
     }
-    this.sendMarkdown(chatId, text);
+    this.sendMarkdown(chatId, md);
   }
 
 
@@ -445,35 +448,42 @@ class TelegramBot {
 
     // Help message if no alerts set
     if (nameAlertNames.length == 0 && blockHeightAlerts.length == 0) {
-      let text =
-          `${emojis.frown} You don't seem to have any alerts set up\\.\n\n`;
-      text += formatAlertsHelpMarkdown();
-      await this.slimbot.sendMessage(chatId, text, {parse_mode: 'MarkdownV2'});
+      const md = new tgmd();
+      md.appendLine(
+          emojis.frown, ' You don\'t seem to have any alerts set up.');
+      md.appendLine();
+      md.append(formatAlertsHelpMarkdown());
+      await this.sendMarkdown(chatId, md);
       return;
     }
 
     // Summarize name alerts
-    let text = '';
+    const md = new tgmd();
     if (nameAlertNames.length > 0) {
-      text += 'I am watching the following *names* for you\\:\n';
-      text += summarizeNameAlertNames(nameAlertNames);
-      text +=
-          '\n_To cancel a name alert or see its details, send me its Handshake name\\._\n';
+      md.appendLine(
+          'I am watching the following ', tgmd.bold('names'), ' for you:');
+      md.append(formatNameAlertNamesMarkdown(nameAlertNames));
+      md.appendLine();
+      md.appendLine(tgmd.italic(
+          'To cancel a name alert or see its details, ',
+          'send me its Handshake name.'));
     } else {
-      text += '_You don\'t have any name alerts set\\._\n';
+      md.appendLine(tgmd.italic('You don\'t have any name alerts set.'));
     }
-    text += '\n';
+    md.appendLine();
 
     // Summarize block height alerts
     if (blockHeightAlerts.length > 0) {
-      text += 'I am watching the following *block heights* for you\\:\n';
-      text += summarizeBlockHeightAlerts(blockHeightAlerts);
-      text += '\n';
+      md.appendLine(
+          'I am watching the following ', tgmd.bold('block heights'),
+          ' for you:');
+      md.appendLine(formatBlockHeightAlertsMarkdown(blockHeightAlerts));
     }
 
-    text += '_Send /help\\_alerts to see a help message about alerts_\\.';
+    md.append(
+        tgmd.italic('Send /help_alerts to see a help message about alerts.'));
 
-    await this.slimbot.sendMessage(chatId, text, {parse_mode: 'MarkdownV2'});
+    await this.sendMarkdown(chatId, md);
   }
 
 
@@ -501,12 +511,14 @@ class TelegramBot {
    */
   async deliverBlockHeightAlert({chatId, blockHeight, alertType, context}) {
     if (alertType == alertTypes.BLOCK_MINED) {
-      let text = `${emojis.alert} Alert\\: block `;
-      text +=
-          `*[${blockHeight}](https://hnsnetwork.com/blocks/${blockHeight})*`;
-      text += ' has been mined\\.';
+      const md = new tgmd(emojis.alert, ' Alert: ');
+      md.append(
+          'block ',
+          tgmd.bold(tgmd.link(
+              blockHeight, `https://hnsnetwork.com/blocks/${blockHeight}`)),
+          ' has been mined.');
 
-      await this.slimbot.sendMessage(chatId, text, {parse_mode: 'MarkdownV2'});
+      await this.sendMarkdown(chatId, md);
     } else {
       console.log(`Unknown alertType received: ${alertType}`);
     }
@@ -561,7 +573,7 @@ Please use /help to see the list of commands that I recognize.`);
    * Send markdown-formatted message to chat
    *
    * @param {number} chatId
-   * @param {string} md
+   * @param {string|TelegramMarkdown} md
    * @param {Object|null} inlineKeyboard
    */
   async sendMarkdown(chatId, md, inlineKeyboard = null) {
@@ -569,7 +581,7 @@ Please use /help to see the list of commands that I recognize.`);
     if (inlineKeyboard) {
       params.reply_markup = JSON.stringify(inlineKeyboard);
     }
-    await this.slimbot.sendMessage(chatId, md, params);
+    await this.slimbot.sendMessage(chatId, md.toString(), params);
   }
 
 
@@ -583,41 +595,46 @@ Please use /help to see the list of commands that I recognize.`);
     const encodedName = encodeName(name);
     const alert =
         await this.alertManager.getTelegramNameAlert(chatId, encodedName);
-    const blockHeight = await this.hnsQuery.getCurrentBlockHeight();
-    const secondsPerBlock = Network.get().pow.targetSpacing;
 
     if (!alert) {
       return;
     }
 
-    let text = `You have an alert set for the name *${tgsafe(name)}*`;
+    const blockHeight = await this.hnsQuery.getCurrentBlockHeight();
+    const secondsPerBlock = Network.get().pow.targetSpacing;
+
+    const md = new tgmd('You have an alert set for the name ', tgmd.bold(name));
     if (encodedName != name) {
-      text += ` \\(punycode \`${tgsafe(encodedName)}\`\\)`;
+      md.append(' (punycode ', tgmd.code(encodedName), ')');
     }
-    text += '\n';
+    md.appendLine();
 
     if (alert.blockHeightTriggers && alert.blockHeightTriggers.length > 0) {
-      text += '\nUpcoming block height milestones\\:\n';
+      md.appendLine();
+      md.appendLine('Upcoming block height milestones:');
+
       for (let trigger of alert.blockHeightTriggers) {
-        const label =
+        const milestone =
             milestoneLabels[trigger.nsMilestone] || trigger.nsMilestone;
         const blocks = trigger.blockHeight - blockHeight;
         const timeLeft = blocksToApproxDaysOrHours(blocks, secondsPerBlock);
-        // text += `\\- ${trigger.blockHeight}*\\: ${tgsafe(label)}\n`;
-        text += `\\- in *${numUnits('block', blocks)}* `;
+
+        md.append('- in ', tgmd.bold(numUnits('block', blocks)), ' ');
         if (timeLeft) {
-          text += ` \\(\\~${timeLeft}\\)`;
+          md.append(` (~${timeLeft})`);
         }
-        text +=
-            `\\: ${tgsafe(label)} \\(block \`\\#${trigger.blockHeight}\`\\)\n`;
+        md.append(
+            `: ${milestone} (block `, tgmd.code('#', trigger.blockHeight), ')');
       }
     } else {
-      text += '\nI will alert you as soon as any transactions ' +
-          'that affect the state of this name are posted to the blockchain\\.';
+      md.appendLine();
+      md.append(
+          'I will alert you as soon as any transactions ',
+          'that affect the state of this name are posted to the blockchain.');
     }
 
     await this.sendMarkdown(
-        chatId, text, nameAlertInlineKeyboard(encodedName, true));
+        chatId, md, nameAlertInlineKeyboard(encodedName, true));
   }
 }
 
@@ -690,18 +707,6 @@ function parseCommandMessage(message) {
 
 
 /**
- * Escape Telegram-unsafe characters
- *
- * @param {string} text
- * @returns {string}
- */
-function tgsafe(text) {
-  const specialCharsRegex = /[_\*\[\]\(\)\~\`\>\#\+\-\=\|\{\}\.\!]/gi;
-  return text.replace(specialCharsRegex, '\\$&');
-}
-
-
-/**
  * Format Handshake name information markdown text
  *
  * @param {string} name
@@ -712,25 +717,28 @@ function tgsafe(text) {
  */
 function formatNameInfoMarkdown(name, encodedName, nameState, nameInfo) {
   // Header
-  let text = `Name: *${tgsafe(name)}*\n`;
+  const md = new tgmd('Name: ', tgmd.bold(name), '\n');
 
   // Include punycode name if its different
   if (name != encodedName) {
-    text += `punycode: \`${tgsafe(encodedName)}\`\n`;
+    md.appendLine('punycode: ', tgmd.code(encodedName));
   }
 
-  text += '\n';
+  md.appendLine();
 
   // Details
-  text += formatNameStateDetailsMarkdown(nameState, nameInfo) + '\n';
+  md.appendLine(formatNameStateDetailsMarkdown(nameState, nameInfo));
 
   // External links
-  text += '\n';
-  text += `See details on`;
-  text += ` [Namebase](https://www.namebase.io/domains/${encodedName})`;
-  text += ` or [block explorer](https://hnsnetwork.com/names/${encodedName})\n`;
+  md.appendLine();
+  md.append(
+      'See details on ',
+      tgmd.link('Namebase', `https://www.namebase.io/domains/${encodedName}`),
+      ' or ',
+      tgmd.link(
+          'block explorer', `https://hnsnetwork.com/names/${encodedName}`));
 
-  return text;
+  return md;
 }
 
 
@@ -741,44 +749,45 @@ function formatNameInfoMarkdown(name, encodedName, nameState, nameInfo) {
  *
  * @param {string} encodedName
  * @param {NameAlertBlockHeightTrigger[]} blockHeightTriggers
- * @param {NameAction[]} nameActions
+ * @param {Object[]} nameActions
  * @returns {string}
  */
 function formatNameAlertMarkdown(
     encodedName, blockHeightTriggers, nameActions) {
   // Header
   const name = decodeName(encodedName);
-  let text = `${emojis.alert} Name alert: *${tgsafe(name)}*`;
+  const md = new tgmd(emojis.alert, ' Name alert: ', tgmd.bold(name));
   if (name != encodedName) {
-    text += ` \\(\`${tgsafe(encodedName)}\`\\)`;
+    md.append(' (', tgmd.code(encodedName), ')');
   }
-  text += '\n\n';
+  md.appendLine();
+  md.appendLine();
 
   // All the happenings
   if (blockHeightTriggers) {
     for (let {nsMilestone} of blockHeightTriggers) {
-      text += describeMilestone(nsMilestone);
-      text += '\n\n';
+      md.appendLine(formatMilestoneMarkdown(nsMilestone));
+      md.appendLine();
     }
   }
 
   // Name actions
   if (nameActions) {
-    text += 'New actions\\:\n';
+    md.appendLine('New actions:');
     for (let nameAction of nameActions) {
-      text += '\\- ';
-      text += describeNameAction(nameAction);
-      text += '\n';
+      md.appendLine('- ', formatNameActionMarkdown(nameAction));
     }
-    text += '\n';
+    md.appendLine();
   }
 
   // Footer
-  text += `_Check the [block explorer](https://hnsnetwork.com/names/${
-      encodedName}) `;
-  text += 'for more information\\._';
+  md.append(tgmd.italic(
+      'Check the ',
+      tgmd.link(
+          'block explorer', `https://hnsnetwork.com/names/${encodedName}`),
+      ' for more information.'));
 
-  return text;
+  return md;
 }
 
 
@@ -794,68 +803,81 @@ function formatNameAlertMarkdown(
 function formatNameStateDetailsMarkdown(nameState, nameInfo) {
   switch (nameState) {
     case nameAvails.UNAVAIL_RESERVED:
-      return 'This name is *reserved* but hasn\'t been claimed yet\\.';
+      return new tgmd(
+          'This name is ', tgmd.bold('reserved'),
+          ' but hasn\'t been claimed yet.');
 
     case nameAvails.UNAVAIL_CLAIMING:
-      return 'This name is *reserved* and is currently being claimed\\.';
+      return new tgmd(
+          'This name is ', tgmd.bold('reserved'),
+          ' and is currently being claimed.');
 
     case nameAvails.AVAIL_NEVER_REGISTERED:
-      return 'This name is *available*\\: it hasn\'t been registered yet\\.';
+      return new tgmd(
+          'This name is ', tgmd.bold('available'),
+          ': it hasn\'t been registered yet.');
 
     case nameAvails.AVAIL_NOT_RENEWED:
-      return 'This name is *available*\\: it was previously registered, but the registration wasn\'t renewed\\.';
+      return new tgmd(
+          'This name is ', tgmd.bold('available'),
+          ': it was previously registered, but the registration wasn\'t renewed.');
 
     case nameAvails.AUCTION_OPENING: {
       const hrs = nameInfo.info.stats?.hoursUntilBidding || 0;
       const when =
           Math.floor(hrs) > 0 ? `in about ${numUnits('hour', hrs)}` : 'soon';
-      const blocksLeft = nameInfo.info.stats?.blocksUntilBidding;
-      let text = `The *auction* for this name has just been opened\\.\n`;
-      text += `Bidding will begin ${when} `;
-      text += `\\(${numUnits('block', blocksLeft)} left\\)\\.`;
+      const blocksLeft =
+          numUnits('block', nameInfo.info.stats?.blocksUntilBidding);
 
-      return text;
+      return new tgmd(
+          tgmd.bold('The auction'), ' for this name has just been opened.\n',
+          `Bidding will begin ${when} (${blocksLeft} left).`);
     }
 
     case nameAvails.AUCTION_BIDDING: {
       const hrs = nameInfo.info.stats?.hoursUntilReveal || 0;
       const when =
           Math.floor(hrs) > 0 ? `in about ${numUnits('hour', hrs)}` : 'soon';
-      const blocksLeft = nameInfo.info.stats?.blocksUntilReveal;
-      let text = `This name is *in auction*\\: `;
-      text += `Bids are being accepted right now\\.\n`;
-      text += `Bidding will end ${when} `;
-      text += `\\(${numUnits('block', blocksLeft)} left\\)\\.`;
-      return text;
+      const blocksLeft =
+          numUnits('block', nameInfo.info.stats?.blocksUntilReveal);
+
+      return new tgmd(
+          'This name is ', tgmd.bold('in auction'),
+          ': Bids are being accepted right now.\n',
+          `Bidding will end ${when} (${blocksLeft} left).`);
     }
 
     case nameAvails.AUCTION_REVEAL: {
       const hrs = nameInfo.info.stats?.hoursUntilClose || 0;
       const when =
           Math.floor(hrs) > 0 ? `in about ${numUnits('hour', hrs)}` : 'soon';
-      const blocksLeft = nameInfo.info.stats?.blocksUntilClose;
-      let text = `This name is *in auction*\\: `;
-      text += `Bids are being revealed right now\\.\n`;
-      text += `Auction will close ${when} `;
-      text += `\\(${numUnits('block', blocksLeft)} left\\)\\.`;
-      return text;
+      const blocksLeft =
+          numUnits('block', nameInfo.info.stats?.blocksUntilClose);
+
+      return new tgmd(
+          'This name is ', tgmd.bold('in auction'),
+          ': Bids are being revealed right now.\n',
+          `Auction will close ${when} (${blocksLeft} left).`);
     }
 
     case nameAvails.UNAVAIL_CLOSED: {
       let ds = nameInfo.info.stats?.daysUntilExpire || 0;
       let when = Math.floor(ds) > 0 ? `in about ${numUnits('day', ds)}` :
                                       'in less than a day';
-      return `This name is taken\\. It will expire ${
-          when} unless renewed by the owner before then\\.`;
+      return new tgmd(
+          'This name is taken. ',
+          `It will expire ${when} unless renewed by the owner before then.`);
     }
 
     case nameAvails.UNAVAIL_TRANSFERRING:
-      return 'This name is being transferred from one address to another\\.';
+      return new tgmd(
+          'This name is being transferred from one address to another.');
 
     default:
-      return `I'm not sure how to summarize the state of this name ` +
-          `\\(${tgsafe(nameState)}\\)\\.\\.\\.\n` +
-          `Please click one of the links below to see the details\\.`;
+      return new tgmd(
+          `I'm not sure how to summarize the state of this name `,
+          `(${nameState})...\n`,
+          `Please click one of the links below to see the details.`);
   }
 }
 
@@ -866,62 +888,57 @@ function formatNameStateDetailsMarkdown(nameState, nameInfo) {
  * @param {string} milestone
  * @returns {string}
  */
-function describeMilestone(milestone) {
-  let text = '';
-
+function formatMilestoneMarkdown(milestone) {
   switch (milestone) {
     case nsMilestones.AUCTION_OPENING:
-      text += '*Auction opening*\\: Bidding will begin in a few hours\\.';
-      break;
+      return new tgmd(
+          tgmd.bold('Auction opening'), ': Bidding will begin in a few hours.');
 
     case nsMilestones.AUCTION_BIDDING:
-      text += '*Auction bidding*\\: The bidding for this name has begun\\.';
-      text += ' Bids will be accepted for a few days\\.';
-      break;
+      return new tgmd(
+          tgmd.bold('Auction bidding'), ': Bidding for this name has started. ',
+          'Bids will be accepted for a few days.');
 
     case nsMilestones.AUCTION_REVEAL:
-      text += '*Auction reveal*\\: Bids can now be revealed\\.';
-      text += ' The auction will close in a few days\\.';
-      break;
+      return new tgmd(
+          tgmd.bold('Auction reveal'), ': Bids can now be revealed. ',
+          'The auction will close in a few days.');
 
     case nsMilestones.AUCTION_CLOSED:
-      text += '*Auction closed*\\: The auction for this name is over\\.';
-      break;
+      return new tgmd(
+          tgmd.bold('Auction closed'), ': The auction for this name is over.');
 
     case nsMilestones.NAME_LOCKED:
-      text += '*Name locked*\\: The name has been locked\\.';
-      break;
+      return new tgmd(tgmd.bold('Name locked'), ': The name has been locked.');
 
     case nsMilestones.NAME_UNLOCKED:
-      text += '*Name unlocked*\\: The name has been unlocked';
-      text += ' and changes can now be made to it\\.';
-      break;
+      return new tgmd(
+          tgmd.bold('Name unlocked'), ': The name has been unlocked ',
+          'and changes can now be made to it.');
 
     case nsMilestones.TRANSFER_IN_PROGRESS:
-      text += '*Transfer in progress*\\: The name is being transferred ';
-      text += 'to another address\\.'
-      break;
+      return new tgmd(
+          tgmd.bold('Transfer in progress'),
+          ': The name is being transferred to another address.');
 
     case nsMilestones.TRANSFER_FINALIZING:
-      text += '*Transfer finalizing*\\: The name transfer ';
-      text += 'is waiting to be finalized\\.';
-      break;
+      return new tgmd(
+          tgmd.bold('Transfer finalizing'),
+          ': The name transfer is waiting to be finalized.');
 
     case nsMilestones.REGISTRATION_EXPIRED:
-      text += '*Registration expired*\\: The name registration';
-      text += ' has not been renewed in time';
-      text += ' and it is available for a new auction\\.';
-      break;
+      return new tgmd(
+          tgmd.bold('Registration expired'),
+          ': The registration has not been renewed ',
+          'and the name is available for a new auction.');
 
     default:
       console.log(`Unknown name state milestone received: '${milestone}`);
-      text += '_The state of this name has changed';
-      text += ' but I\'m not sure how to summarize it\\.';
-      text += ' Please check the block explorer link below for details\\._';
-      break;
+      return tgmd.italic(
+          'The state of this name has changed ',
+          'but I\'m not sure how to summarize it. ',
+          'Please check the block explorer link below for details.');
   }
-
-  return text;
 }
 
 
@@ -930,45 +947,55 @@ function describeMilestone(milestone) {
  *
  * @param {NameAction} nameAction
  */
-function describeNameAction(nameAction) {
+function formatNameActionMarkdown(nameAction) {
   switch (nameAction.action) {
     case 'CLAIM':
-      return '*Claim*\\: The name has been claimed\\.';
+      return new tgmd(tgmd.bold('Claim'), ': The name has been claimed.');
 
     case 'OPEN':
-      return '*Auction opened*\\: The name auction has been opened\\.';
+      return new tgmd(
+          tgmd.bold('Auction opened'), ': The name auction has been opened.');
 
     case 'BID':
-      return `*Bid placed*\\: ${tgsafe('' + nameAction.lockupAmount)} HNS\\.`;
+      return new tgmd(
+          tgmd.bold('Bid placed'), `: ${nameAction.lockupAmount} HNS.`);
 
     case 'REVEAL':
-      return `*Bid revealed*\\: ${tgsafe('' + nameAction.bidAmount)} HNS\\.`;
+      return new tgmd(
+          tgmd.bold('Bid revealed'), `: ${'' + nameAction.bidAmount} HNS.`);
 
     case 'REDEEM':
-      return '*Bid redeemed*\\: Bid has been redeemed\\.';
+      return new tgmd(tgmd.bold('Bid redeemed'), ': Bid has been redeemed.');
 
     case 'REGISTER':
-      return '*Registered*\\: The name has been registered\\.';
+      return new tgmd(
+          tgmd.bold('Registered'), ': The name has been registered.');
 
     case 'RENEW':
-      return '*Renewed*\\: The name has been renewed\\.';
+      return new tgmd(tgmd.bold('Renewed'), ': The name has been renewed.');
 
     case 'UPDATE':
-      return '*Updated*\\: Name records have been updated\\.';
+      return new tgmd(
+          tgmd.bold('Updated'), ': Name records have been updated.');
 
     case 'TRANSFER':
-      return '*Transfer initiated*\\: A transfer of the name ' +
-          'to a different address has been initiated\\.';
+      return new tgmd(
+          tgmd.bold('Transfer initiated'),
+          ': A transfer of the name to a different address has been initiated.');
 
     case 'FINALIZE':
-      return '*Transfer finalized*\\: A transfer of the name ' +
-          'to a different address has been finalized\\.';
+      return new tgmd(
+          tgmd.bold('Transfer finalized'), ': A transfer of the name ',
+          'to a different address has been finalized.');
 
     case 'REVOKE':
-      return '*Name revoked*\\: The name has been revoked\\.';
+      return new tgmd(
+          tgmd.bold('Name revoked'), ': The name has been revoked.');
 
     default:
-      return '_Not sure how to describe this action\\. Please check the block explorer link below_\\.';
+      return new tgmd.italic(
+          'Not sure how to describe this action. ',
+          'Please check the block explorer link below.');
   }
 }
 
@@ -987,16 +1014,22 @@ function formatBlockMinedAlertMarkdown(
   const time = mins > 0 ? numUnits('minute', mins) :
                           numUnits('second', secondsSinceMined);
 
-  let text = 'Current block height is ';
-  text +=
-      `*[${blockHeight}](https://hnsnetwork.com/blocks/${blockHeight})*\\.\n`;
+  const md = new tgmd('Current block height is ');
+  md.appendLine(
+      tgmd.bold(tgmd.link(
+          blockHeight, `https://hnsnetwork.com/blocks/${blockHeight}`)),
+      '.');
+
   if (secondsSinceMined > 0) {
-    text += `It was mined approximately ${time} ago\\.\n`;
+    md.appendLine(`It was mined approximately ${time} ago.`);
   }
-  text += '\n';
-  text += `I'll send you a message when block `;
-  text += `\`\\#${targetBlockHeight}\` has been mined\\.`;
-  return text;
+
+  md.appendLine();
+  md.append(
+      'I\'ll send you a message when block ',
+      tgmd.code(`#${targetBlockHeight}`), ' has been mined.');
+
+  return md;
 }
 
 
@@ -1006,22 +1039,30 @@ function formatBlockMinedAlertMarkdown(
  * @returns {string}
  */
 function formatAlertsHelpMarkdown() {
-  let text = '';
-  text += `*Name alerts*\nI can watch a Handshake name and alert you `;
-  text += `whenever any of the following happens\\:\n`;
-  text += `\\- The name is claimed\n`;
-  text += `\\- Name auction is opened, bidding or reveal periods begin\n`;
-  text += `\\- Anyone bids or reveals a bid in the name auction\n`;
-  text += `\\- Name is registered, transferred, updated, expired or renewed\n`;
-  text +=
-      `_To create a name alert_\\: send me the name you are interested in, `;
-  text += `then click \`Create alert\`\\.\n`;
-  text += `\n`;
-  text += `*Block height alerts*\nI can alert you whenever a `;
-  text += `particular block height has been mined\\.\n`;
-  text += `_To create a block height alert_\\: see /help `;
-  text += `for details of the \`nextblock\` command\\.\n`;
-  return text;
+  const md = new tgmd(tgmd.bold('Name alerts'), '\n');
+  md.appendLine(
+      'I can watch a Handshake name and alert you ',
+      'whenever any of the following happens:');
+  md.appendLine('- The name is claimed');
+  md.appendLine('- Name auction is opened, bidding or reveal periods begin');
+  md.appendLine('- Anyone bids or reveals a bid in the name auction');
+  md.appendLine(
+      '- Name is registered, transferred, updated, expired or renewed');
+  md.appendLine();
+  md.appendLine(
+      tgmd.italic('To create a name alert'),
+      ': send me the name you are interested in, then click ',
+      tgmd.code('Create alert'));
+  md.appendLine();
+
+  md.appendLine(tgmd.bold('Block height alerts'));
+  md.appendLine(
+      'I can alert you whenever a particular block height has been mined.');
+  md.appendLine();
+  md.append(
+      tgmd.italic('To create a block height alert'),
+      ': see /help for details of the ', tgmd.code('nextblock'), ' command.');
+  return md;
 }
 
 
@@ -1031,15 +1072,18 @@ function formatAlertsHelpMarkdown() {
  * @param {string[]} encodedNames
  * @returns
  */
-function summarizeNameAlertNames(encodedNames) {
-  let text = '';
+function formatNameAlertNamesMarkdown(encodedNames) {
+  const md = new tgmd();
   for (let en of encodedNames) {
     const name = decodeName(en);
-    text += `\\- *${tgsafe(name)}*`;
+    md.append('- ', tgmd.bold(name));
     // Include punycode if necessary
-    text += (name != en) ? `\\(punycode \`${tgsafe(en)}\`\\)\n` : '\n';
+    if (name != en) {
+      md.append('(punycode ', tgmd.code(en), ')');
+    }
+    md.appendLine();
   }
-  return text;
+  return md;
 }
 
 
@@ -1049,17 +1093,22 @@ function summarizeNameAlertNames(encodedNames) {
  * @param {Object[]} alerts
  * @returns
  */
-function summarizeBlockHeightAlerts(alerts) {
-  let text = '';
+function formatBlockHeightAlertsMarkdown(alerts) {
+  const md = new tgmd();
   for (let alert of alerts) {
     // TODO: handle different alertTypes
-    text += `\\- *${alert.blockHeight}\\:* Block mined alert\n`;
+    md.appendLine('- ', tgmd.bold(alert.blockHeight), ': Block mined alert');
   }
-  return text;
+  return md;
 }
 
 
 module.exports = {
   parseCommandMessage,
+  formatNameAlertMarkdown,
+  formatNameInfoMarkdown,
+  formatNameStateDetailsMarkdown,
+  formatMilestoneMarkdown,
+  formatBlockMinedAlertMarkdown,
   TelegramBot
 };
